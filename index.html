@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1085,9 +1085,20 @@ async function buildPoiGrid(s){
   const count=season?season.episode_count:24;
   const grid=document.getElementById('poiGrid');
   
+  // Fetch episode stills from TMDB
+  let epStills={};
+  try{
+    const sd=await tmdb(`/tv/${currentItem.id}/season/${s}`);
+    if(sd.episodes) sd.episodes.forEach(ep=>{
+      epStills[ep.episode_number]=ep.still_path?`https://image.tmdb.org/t/p/w300${ep.still_path}`:'';
+    });
+  }catch(e){}
+  
   grid.innerHTML=Array.from({length:count},(_,i)=>{
     const ep=i+1;
+    const still=epStills[ep]||'';
     return `<div class="ep-cell" data-ep="${ep}">
+      ${still?`<img class="ep-cell-img" src="${still}" alt="EP${ep}" loading="lazy" onerror="this.style.display='none'">`:''}
       <div class="ep-cell-ph">EP ${ep}</div>
       <div class="ep-cell-num">E${String(ep).padStart(2,'0')}</div>
     </div>`;
@@ -1183,7 +1194,7 @@ async function openSportItem(match){
 }
 
 const F1_API='https://api.jolpi.ca/ergast/f1';
-let f1Data={races:[],driverStandings:[],constructorStandings:[],loaded:false};
+let f1Data={races:[],driverStandings:[],constructorStandings:[],loaded:false, error:false};
 let f1ActiveTab='next';
 let f1CountdownTimer=null;
 
@@ -1193,21 +1204,55 @@ const F1_TEAM_COLORS = {
   'Williams': '#64C4FF', 'RB F1 Team': '#6692FF', 'Kick Sauber': '#52E252', 'Haas F1 Team': '#B6BABD'
 };
 
+async function fetchWithTimeout(url, ms = 8000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(id);
+    if (!response.ok) throw new Error('API Error');
+    return await response.json();
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
+function getF1ErrorHTML() {
+  return `<div class="empty" style="margin:20px; background:linear-gradient(135deg,#110202,#0a0000); border:1px solid rgba(225,6,0,0.3); border-left:4px solid var(--f1-red); border-radius:2px; padding:40px 20px; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+    <div class="icon" style="color:var(--f1-red);font-size:42px;margin-bottom:16px;">⚠️</div>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:32px;color:var(--cream);letter-spacing:2px;margin-bottom:8px">TELEMETRY LINK SEVERED</div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);max-width:400px;margin:0 auto 24px;line-height:1.6">The connection to the Ergast F1 API timed out or is offline. The satellite is currently unreachable.</div>
+    <button class="f1-watch-btn" onclick="retryF1Load()" style="font-size:16px;padding:10px 24px">🔄 RECONNECT SATELLITE</button>
+  </div>`;
+}
+
+function retryF1Load() {
+  f1Data.error = false;
+  f1Data.loaded = false;
+  renderF1Tab(f1ActiveTab);
+  loadF1();
+}
+
 async function loadF1(){
   if(f1Data.loaded){renderF1Tab(f1ActiveTab);return;}
   try{
     const[sched,drv,con]=await Promise.all([
-      fetch(F1_API+'/current.json').then(r=>r.json()),
-      fetch(F1_API+'/current/driverStandings.json').then(r=>r.json()),
-      fetch(F1_API+'/current/constructorStandings.json').then(r=>r.json()),
+      fetchWithTimeout(F1_API+'/current.json'),
+      fetchWithTimeout(F1_API+'/current/driverStandings.json'),
+      fetchWithTimeout(F1_API+'/current/constructorStandings.json'),
     ]);
     f1Data.races=sched.MRData.RaceTable.Races||[];
     f1Data.year=sched.MRData.RaceTable.season;
     f1Data.driverStandings=drv.MRData.StandingsTable.StandingsLists[0]?.DriverStandings||[];
     f1Data.constructorStandings=con.MRData.StandingsTable.StandingsLists[0]?.ConstructorStandings||[];
     f1Data.loaded=true;
+    f1Data.error=false;
     document.getElementById('f1-season-year').textContent=f1Data.year||'2025';
-  }catch(e){console.warn('F1 API Error',e);}
+  }catch(e){
+    console.warn('F1 API Error',e);
+    f1Data.error=true;
+  }
   renderF1Tab(f1ActiveTab);
 }
 
@@ -1237,9 +1282,16 @@ function f1NextRace(){
 function renderF1Next(){
   const el=document.getElementById('f1-next');
   if(!el)return;
-  if(!f1Data.loaded){el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:#e10600"></div><span style="color:#e10600">LOADING...</span></div>';return;}
+  if(f1Data.error){el.innerHTML=getF1ErrorHTML();return;}
+  if(!f1Data.loaded){el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:#e10600"></div><span style="color:#e10600">LOADING TELEMETRY...</span></div>';return;}
   const race=f1NextRace();
-  if(!race){el.innerHTML='<div class="spinner-wrap">SEASON COMPLETE 🏁</div>';return;}
+  if(!race){
+    el.innerHTML=`<div class="f1-next-race" style="text-align:center; padding: 40px 20px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--cream);letter-spacing:2px;margin-bottom:8px">🏁 SEASON COMPLETE</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted)">AWAITING NEXT SEASON TELEMETRY</div>
+    </div>`;
+    return;
+  }
   const rDate=new Date(race.date+'T'+(race.time||'14:00:00Z'));
   
   const sessions=[{n:'FP1',k:'FirstPractice'},{n:'FP2',k:'SecondPractice'},{n:'FP3',k:'ThirdPractice'},{n:'SPRINT Q',k:'SprintQualifying'},{n:'SPRINT',k:'Sprint'},{n:'QUALI',k:'Qualifying'},{n:'RACE',k:'race'}];
@@ -1275,7 +1327,8 @@ function startF1Countdown(target){
 
 function renderF1Calendar(){
   const el=document.getElementById('f1-calendar-list');
-  if(!f1Data.loaded)return;
+  if(f1Data.error){el.innerHTML=getF1ErrorHTML();return;}
+  if(!f1Data.loaded){el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:#e10600"></div><span style="color:#e10600">FETCHING CALENDAR...</span></div>';return;}
   const now=Date.now(),next=f1NextRace();
   el.innerHTML=f1Data.races.map(r=>{
     const rDate=new Date(r.date+'T'+(r.time||'14:00:00Z'));
@@ -1290,7 +1343,8 @@ function renderF1Calendar(){
 
 function renderF1Drivers(){
   const el=document.getElementById('f1-drivers-list');
-  if(!f1Data.loaded)return;
+  if(f1Data.error){el.innerHTML=getF1ErrorHTML();return;}
+  if(!f1Data.loaded){el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:#e10600"></div><span style="color:#e10600">LOADING STANDINGS...</span></div>';return;}
   const max=parseFloat(f1Data.driverStandings[0]?.points||1);
   el.innerHTML=f1Data.driverStandings.map((s,i)=>{
     const pct=Math.round((parseFloat(s.points)/max)*100);
@@ -1310,7 +1364,8 @@ function renderF1Drivers(){
 
 function renderF1Constructors(){
   const el=document.getElementById('f1-constructors-list');
-  if(!f1Data.loaded)return;
+  if(f1Data.error){el.innerHTML=getF1ErrorHTML();return;}
+  if(!f1Data.loaded){el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:#e10600"></div><span style="color:#e10600">LOADING STANDINGS...</span></div>';return;}
   const max=parseFloat(f1Data.constructorStandings[0]?.points||1);
   el.innerHTML=f1Data.constructorStandings.map((s,i)=>{
     const pct=Math.round((parseFloat(s.points)/max)*100);
@@ -1366,7 +1421,11 @@ async function renderF1Watch() {
       }).join('')}
     </div>`;
   } catch(e) {
-    el.innerHTML = '<div class="empty">UNABLE TO CONNECT TO SATELLITE NETWORK</div>';
+    el.innerHTML = `<div class="empty" style="margin-top:20px;">
+      <div class="icon" style="color:var(--f1-red);font-size:42px;margin-bottom:16px;">📡</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:32px;color:var(--cream);letter-spacing:2px;margin-bottom:8px">SATELLITE NETWORK OFFLINE</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);">Unable to scan for live broadcasts.</div>
+    </div>`;
   }
 }
 
