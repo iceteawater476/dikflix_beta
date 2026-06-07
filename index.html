@@ -987,10 +987,11 @@ function openSportStream(id){
     document.getElementById('pFrame').src = currentSources[0].url;
 }
 
-/* ── F1 TELEMETRY HUB (Robust Fetching without Fallback Data) ── */
+/* ── F1 TELEMETRY HUB (Robust Fetching with Mirror Fallback) ── */
 let f1Data={loaded:false, error:false}, f1ActiveTab='next';
 
-async function fetchWithTimeout(url, ms = 5000) {
+// Increased timeout to 8 seconds because free APIs can be very slow.
+async function fetchWithTimeout(url, ms = 8000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
   try {
@@ -1007,7 +1008,7 @@ function getF1ErrorHTML(errorMsg) {
   return `<div class="empty" style="margin:20px; background:linear-gradient(135deg,var(--f1-dark),#000); border:1px solid rgba(225,6,0,0.3); border-left:4px solid var(--f1-red); border-radius:2px; padding:40px 20px; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
     <div class="icon" style="color:var(--f1-red);font-size:42px;margin-bottom:16px;">⚠️</div>
     <div style="font-family:'Bebas Neue',sans-serif;font-size:32px;color:var(--cream);letter-spacing:2px;margin-bottom:8px">TELEMETRY LINK SEVERED</div>
-    <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);max-width:400px;margin:0 auto 24px;line-height:1.6">The connection to the Ergast F1 API timed out or is offline.<br><br>Error: ${errorMsg}</div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);max-width:400px;margin:0 auto 24px;line-height:1.6">The connection to the F1 API timed out or is offline.<br><br>Error: ${errorMsg}</div>
     <button class="f1-watch-btn" onclick="retryF1Load()" style="font-size:16px;padding:10px 24px">🔄 RECONNECT SATELLITE</button>
   </div>`;
 }
@@ -1025,27 +1026,38 @@ async function loadF1(){
   const currentYear = new Date().getFullYear();
   let success = false; let lastError = "";
 
-  // Explicitly loop through the current and previous years.
-  // We avoid requesting '/current.json' which is notoriously prone to 404s on the Jolpica mirror during season transitions.
+  // Added ergast.com as a fallback mirror in case jolpi completely times out
+  const mirrors = ['https://api.jolpi.ca/ergast/f1', 'https://ergast.com/api/f1'];
+
   for (let year = currentYear; year >= 2023; year--) {
-    try {
-      const [sched, drv, con] = await Promise.all([
-        fetchWithTimeout(`https://api.jolpi.ca/ergast/f1/${year}.json`, 5000),
-        fetchWithTimeout(`https://api.jolpi.ca/ergast/f1/${year}/driverStandings.json`, 5000),
-        fetchWithTimeout(`https://api.jolpi.ca/ergast/f1/${year}/constructorStandings.json`, 5000),
-      ]);
-      
-      f1Data.races = sched.MRData.RaceTable.Races || [];
-      f1Data.year = sched.MRData.RaceTable.season;
-      f1Data.driverStandings = drv.MRData.StandingsTable.StandingsLists[0]?.DriverStandings || [];
-      f1Data.constructorStandings = con.MRData.StandingsTable.StandingsLists[0]?.ConstructorStandings || [];
-      
-      f1Data.loaded = true; f1Data.error = false; success = true;
-      break; 
-    } catch (e) {
-      console.warn(`F1 API request failed for year ${year}:`, e.message);
-      lastError = e.message;
+    for (let mirror of mirrors) {
+      try {
+        // Fetch Schedule First. If this fails, we try the next mirror/year immediately.
+        const sched = await fetchWithTimeout(`${mirror}/${year}.json`, 8000);
+
+        if (sched && sched.MRData && sched.MRData.RaceTable) {
+          f1Data.races = sched.MRData.RaceTable.Races || [];
+          f1Data.year = sched.MRData.RaceTable.season;
+          success = true;
+
+          // Fetch Standings safely in parallel. If they time out, it won't break the entire page.
+          const [drvR, conR] = await Promise.allSettled([
+            fetchWithTimeout(`${mirror}/${year}/driverStandings.json`, 6000),
+            fetchWithTimeout(`${mirror}/${year}/constructorStandings.json`, 6000)
+          ]);
+
+          f1Data.driverStandings = drvR.status === 'fulfilled' ? (drvR.value.MRData?.StandingsTable?.StandingsLists[0]?.DriverStandings || []) : [];
+          f1Data.constructorStandings = conR.status === 'fulfilled' ? (conR.value.MRData?.StandingsTable?.StandingsLists[0]?.ConstructorStandings || []) : [];
+          
+          f1Data.loaded = true; f1Data.error = false;
+          break; // Successfully loaded from this mirror, stop trying mirrors
+        }
+      } catch (e) {
+        console.warn(`F1 API request failed for ${mirror}/${year}:`, e.message);
+        lastError = e.message;
+      }
     }
+    if (success) break; // Successfully loaded data for a year, stop going backwards in time
   }
 
   if (!success) {
