@@ -959,7 +959,10 @@ function buildSources(item,type,s=1,e=1){
 
 function setSrcDropdown(sources){
   const sel=document.getElementById('srcSel');
+  const row=document.querySelector('.src-row');
   if(!sel)return;
+  if(curType==='livetv'){if(row)row.style.display='none';return;}
+  if(row)row.style.display='';
   sel.innerHTML=sources.map((s,i)=>`<option value="${i}">${s.n}</option>`).join('');
 }
 function onSrcChange(){
@@ -1090,38 +1093,40 @@ function vhsHTML(item,type,anime){
 }
 
 /* ─── LIVE TV ── */
-function chLogoSlug(n){
-  const l=n.toLowerCase().replace(/[^a-z0-9 ]/g,'').trim();
+function chLogoUrl(name){
+  /* Use logo.clearbit.com via a proxy-friendly pattern,
+     and a curated map of channel slugs for popular networks */
+  const l=name.toLowerCase().replace(/\[.*?\]/g,'').replace(/[^a-z0-9 ]/g,'').trim();
   const map={
-    'cnn':'cnn.com','bbc':'bbc.co.uk','bbc news':'bbc.co.uk','espn':'espn.com',
-    'fox news':'foxnews.com','fox sports':'foxsports.com','nbc':'nbc.com',
-    'abc news':'abcnews.go.com','cbs':'cbs.com','sky news':'sky.com',
+    'cnn':'cnn.com','bbc news':'bbc.co.uk','bbc world news':'bbc.co.uk',
+    'fox news':'foxnews.com','fox sports':'foxsports.com',
+    'espn':'espn.com','espn2':'espn.com','espn3':'espn.com',
     'msnbc':'msnbc.com','cnbc':'cnbc.com','bloomberg':'bloomberg.com',
-    'al jazeera':'aljazeera.com','dw news':'dw.com','nhk world':'nhk.or.jp',
-    'eurosport':'eurosport.com','beIN sports':'beinsports.com',
-    'star sports':'hotstar.com','willow':'willow.tv',
-    'a sports':'the-ans.com','t sports':'tsports.tv',
-    'nfl network':'nfl.com','nba tv':'nba.com','golf channel':'golfchannel.com',
-    'tennis channel':'tennischannel.com','discovery':'discovery.com',
-    'national geographic':'natgeo.com','animal planet':'discoveryplus.com',
+    'al jazeera':'aljazeera.com','france 24':'france24.com',
+    'eurosport':'eurosport.com','discovery':'discovery.com',
     'cartoon network':'cartoonnetwork.com','nickelodeon':'nick.com',
-    'disney':'disney.com','disney channel':'disneyplus.com',
-    'disney jr':'disneyjunior.com','disney xd':'disneyxd.com',
-    'nick jr':'nickjr.com','pbs kids':'pbskids.org',
+    'disney':'disney.com','disney channel':'disneyjr.com',
     'hbo':'hbo.com','starz':'starz.com','showtime':'showtime.com',
-    'fx tv':'fxnetworks.com','amc':'amc.com','tnt':'tntdrama.com',
-    'mtv':'mtv.com','vh1':'vh1.com','comedy central':'cc.com',
+    'mtv':'mtv.com','vh1':'vh1.com','bet':'bet.com',
+    'nfl network':'nfl.com','nba tv':'nba.com','golf channel':'golfchannel.com',
+    'sky sports':'sky.com','sky news':'sky.com',
+    'beIN sports':'beinsports.com','bein sports':'beinsports.com',
+    'star sports':'hotstar.com','dazn':'dazn.com',
+    'willow':'willow.tv','tsn':'tsn.ca',
+    'ndtv':'ndtv.com','wion':'wionews.com',
+    'sony liv':'sonyliv.com','sony':'sonyliv.com',
+    'amc':'amc.com','tnt':'tntdrama.com','tbs':'tbs.com',
     'food network':'foodnetwork.com','hgtv':'hgtv.com',
-    'travel channel':'travelchannel.com','tlc':'tlc.com',
-    'bravo':'bravotv.com','lifetime':'lifetimemovies.com',
-    'syfy':'syfy.com','bloomberg tv':'bloomberg.com',
-    'ndtv':'ndtv.com','sky sports':'sky.com','dazn':'dazn.com',
-    'bein sports':'beinsports.com','tsn':'tsn.ca','sportsnet':'sportsnet.ca',
-    'wion':'wionews.com','sky news':'sky.com','rt news':'rt.com',
+    'animal planet':'discoveryplus.com','nat geo':'natgeo.com',
+    'rtl':'rtl.de','arte':'arte.tv','euronews':'euronews.com',
+    'nbc':'nbc.com','abc':'abc.com','cbs':'cbs.com','pbs':'pbs.org',
   };
-  for(const[k,v] of Object.entries(map)){if(l.includes(k))return v;}
+  for(const [k,v] of Object.entries(map)){
+    if(l.includes(k)) return `https://logo.clearbit.com/${v}`;
+  }
   return '';
 }
+
 function chIcon(n){
   const l=n.toLowerCase();
   if(/sport|espn|bein|willow|cricket|nfl|nba|nhl|tsn|star sport|wwe|boxing|ufc|dazn/.test(l))return'⚽';
@@ -1147,8 +1152,7 @@ function renderTVGrid(){
     return catOk&&qOk;
   });
   grid.innerHTML=filtered.length?filtered.map((ch,i)=>{
-    const slug=chLogoSlug(ch.name);
-    const logoUrl=slug?`https://logo.clearbit.com/${slug}`:'';
+    const logoUrl=chLogoUrl(ch.name);
     return `<div class="tv-ch-card" data-idx="${i}">
       ${logoUrl?`<div class="tv-ch-logo-wrap"><img class="tv-ch-logo" src="${logoUrl}" alt="" onerror="this.parentNode.style.display='none'"></div>`:''}
       <div class="tv-ch-icon" ${logoUrl?'style="display:none"':''}>${chIcon(ch.name)}</div>
@@ -1169,29 +1173,71 @@ function filterTV(cat,el){
 }
 function filterTVSearch(q){tvQuery=q;renderTVGrid();}
 function playLiveTV(ch){
-  prevPage=document.querySelector('.page.active').id;
-  showPage('player-page');
-  curType='livetv';curItem=null;isAnime=false;
-  document.getElementById('pTitle').textContent=ch.name.toUpperCase();
-  document.getElementById('pPills').innerHTML=`<span class="pill-gr pill">🔴 LIVE</span><span class="pill">${ch.cat}</span>`;
-  document.getElementById('pOverview').textContent='';
-  document.getElementById('tvCtrl').style.display='none';
-  document.getElementById('dubRow').style.display='none';
-  // Use HLS.js-capable embed or direct if browser supports HLS
+  /* Live TV: open stream directly in a new fullscreen-capable page */
   const url=ch.url;
-  // Try direct iframe with hls src - most modern browsers support HLS natively or via MSE
-  const embed=`data:text/html,<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;background:#000}video{width:100vw;height:100vh;object-fit:contain}</style></head><body><video autoplay controls playsinline id="v"><source src="${encodeURIComponent(url)}" type="application/x-mpegURL"></video><script>const v=document.getElementById('v');v.src=decodeURIComponent("${encodeURIComponent(url)}");v.play().catch(()=>{});<\/script></body></html>`;
-  // Direct sources - use multiple players
-  curSources=[
-    {n:'NATIVE HLS',  u:`https://www.hlsplayer.net/player?url=${encodeURIComponent(url)}`},
-    {n:'JW PLAYER',   u:`https://cdn.jwplayer.com/players/3dP8wYMV-cdFkp3vm.html?playlist=${encodeURIComponent('[{"sources":[{"file":"'+url+'","type":"hls"}]}]')}`},
-    {n:'PLAYER.ONE',  u:`https://hlsplayer.online/?url=${encodeURIComponent(url)}`},
-    {n:'VIDMOLY',     u:`https://vidmoly.to/embed-player?url=${encodeURIComponent(url)}`},
-    {n:'DIRECT LINK', u:url},
-  ];
-  srcIdx=0;
-  setSrcDropdown(curSources);
-  document.getElementById('pFrame').src=curSources[0].u;
+  const page=window.open('','_blank');
+  if(page){
+    page.document.write(`<!DOCTYPE html><html><head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>${ch.name} — DikFlix Live</title>
+      <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#000;color:#fff;font-family:sans-serif;height:100vh;display:flex;flex-direction:column}
+        .bar{background:#111;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:2px solid #cc1122}
+        .bar-title{font-size:16px;font-weight:700;letter-spacing:1px;flex:1}
+        .live-dot{width:8px;height:8px;border-radius:50%;background:#cc1122;animation:blink 1s step-end infinite;flex-shrink:0}
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+        .bar-close{background:#cc1122;border:none;color:#fff;padding:6px 14px;cursor:pointer;font-size:13px;font-weight:700;border-radius:2px}
+        .player-wrap{flex:1;position:relative;background:#000}
+        video{width:100%;height:100%;object-fit:contain;display:block}
+        .fs-btn{position:absolute;bottom:12px;right:12px;background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.3);color:#fff;padding:6px 12px;cursor:pointer;font-size:12px;border-radius:4px;z-index:10}
+        .err{display:none;position:absolute;inset:0;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:#050505}
+        .err.show{display:flex}
+        .err p{color:#888;font-size:14px;text-align:center;max-width:400px;line-height:1.6}
+        .err a{color:#cc1122;text-decoration:none;border:1px solid #cc1122;padding:8px 20px;border-radius:4px;font-weight:700}
+      </style>
+    </head><body>
+      <div class="bar">
+        <div class="live-dot"></div>
+        <div class="bar-title">${ch.name.toUpperCase()}</div>
+        <span style="font-size:11px;color:#888;letter-spacing:1px">${ch.cat}</span>
+        <button class="bar-close" onclick="window.close()">✕ CLOSE</button>
+      </div>
+      <div class="player-wrap" id="pw">
+        <video id="vid" autoplay controls playsinline
+          onerror="document.getElementById('errMsg').classList.add('show')">
+          <source src="${url}" type="application/x-mpegURL">
+          <source src="${url}" type="video/mp2t">
+        </video>
+        <button class="fs-btn" onclick="document.getElementById('pw').requestFullscreen&&document.getElementById('pw').requestFullscreen();document.getElementById('vid').webkitEnterFullscreen&&document.getElementById('vid').webkitEnterFullscreen()">⛶ FULLSCREEN</button>
+        <div class="err" id="errMsg">
+          <div style="font-size:40px">📡</div>
+          <p>Stream failed to load in this browser.<br>Try opening the direct link below or use VLC.</p>
+          <a href="${url}" target="_blank">OPEN DIRECT STREAM URL</a>
+        </div>
+      </div>
+      <script>
+        const vid=document.getElementById('vid');
+        // HLS.js for browsers that need it (Chrome, Firefox)
+        const s=document.createElement('script');
+        s.src='https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js';
+        s.onload=()=>{
+          if(Hls.isSupported()){
+            const hls=new Hls({maxBufferLength:30,maxMaxBufferLength:60});
+            hls.loadSource('${url}');
+            hls.attachMedia(vid);
+            hls.on(Hls.Events.MANIFEST_PARSED,()=>vid.play().catch(()=>{}));
+            hls.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal)document.getElementById('errMsg').classList.add('show');});
+          } else if(vid.canPlayType('application/vnd.apple.mpegurl')){
+            vid.src='${url}';vid.play().catch(()=>{});
+          }
+        };
+        document.head.appendChild(s);
+      <\/script>
+    </body></html>`);
+    page.document.close();
+  }
   saveCW(1,1,ch.name,url);
 }
 
@@ -1453,62 +1499,119 @@ async function openSportItem(match){
 /* ── F1 DATA ── */
 /* Driver photos: official F1 headshots via f1.com CDN + WikiMedia fallback */
 const F1_DRIVERS = {
-  'max_verstappen':   {num:'1',  photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/M/MAXVER01_Max_Verstappen/maxver01.png.transform/2col-retina/image.png'},
-  'lando_norris':     {num:'4',  photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/L/LANNOR01_Lando_Norris/lannor01.png.transform/2col-retina/image.png'},
-  'charles_leclerc':  {num:'16', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/C/CHALEC01_Charles_Leclerc/chalec01.png.transform/2col-retina/image.png'},
-  'oscar_piastri':    {num:'81', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/O/OSCPIA01_Oscar_Piastri/oscpia01.png.transform/2col-retina/image.png'},
-  'carlos_sainz':     {num:'55', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/C/CARSAI01_Carlos_Sainz/carsai01.png.transform/2col-retina/image.png'},
-  'george_russell':   {num:'63', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/G/GEORUS01_George_Russell/georus01.png.transform/2col-retina/image.png'},
-  'lewis_hamilton':   {num:'44', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/L/LEWHAM01_Lewis_Hamilton/lewham01.png.transform/2col-retina/image.png'},
-  'sergio_perez':     {num:'11', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/S/SERPER01_Sergio_Perez/serper01.png.transform/2col-retina/image.png'},
-  'fernando_alonso':  {num:'14', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/F/FERALO01_Fernando_Alonso/feralo01.png.transform/2col-retina/image.png'},
-  'lance_stroll':     {num:'18', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/L/LANSTR01_Lance_Stroll/lanstr01.png.transform/2col-retina/image.png'},
-  'yuki_tsunoda':     {num:'22', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/Y/YUKTSU01_Yuki_Tsunoda/yuktsu01.png.transform/2col-retina/image.png'},
-  'nico_hulkenberg':  {num:'27', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/N/NICHUL01_Nico_Hulkenberg/nichul01.png.transform/2col-retina/image.png'},
-  'alexander_albon':  {num:'23', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/A/ALEALB01_Alexander_Albon/alealb01.png.transform/2col-retina/image.png'},
-  'franco_colapinto': {num:'43', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1717069050/content/dam/fom-website/drivers/F/FRACOL01_Franco_Colapinto/fracol01.png.transform/2col-retina/image.png'},
-  'gabriel_bortoleto':{num:'5',  photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/G/GABBOR01_Gabriel_Bortoleto/gabbor01.png.transform/2col-retina/image.png'},
-  'isack_hadjar':     {num:'6',  photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/I/ISAHAD01_Isack_Hadjar/isahad01.png.transform/2col-retina/image.png'},
-  'oliver_bearman':   {num:'87', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/O/OLIBEA01_Oliver_Bearman/olibea01.png.transform/2col-retina/image.png'},
-  'jack_doohan':      {num:'7',  photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/J/JACDOO01_Jack_Doohan/jacdoo01.png.transform/2col-retina/image.png'},
-  'liam_lawson':      {num:'30', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/L/LIALAW01_Liam_Lawson/lialaw01.png.transform/2col-retina/image.png'},
-  'andrea_kimi_antonelli':{num:'12',photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/A/ANDANT01_Andrea_Kimi_Antonelli/andant01.png.transform/2col-retina/image.png'},
-  'esteban_ocon':     {num:'31', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/E/ESTOCO01_Esteban_Ocon/estoco01.png.transform/2col-retina/image.png'},
-  'pierre_gasly':     {num:'10', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/P/PIEGAS01_Pierre_Gasly/piegas01.png.transform/2col-retina/image.png'},
-  'valtteri_bottas':  {num:'77', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/V/VALBOT01_Valtteri_Bottas/valbot01.png.transform/2col-retina/image.png'},
-  'zhou_guanyu':      {num:'24', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/Z/ZHOGUA01_Zhou_Guanyu/zhogua01.png.transform/2col-retina/image.png'},
-  'kevin_magnussen':  {num:'20', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/K/KEVMAG01_Kevin_Magnussen/kevmag01.png.transform/2col-retina/image.png'},
-  'nyck_de_vries':    {num:'21', photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/N/NYCDEV01_Nyck_de_Vries/nycdev01.png.transform/2col-retina/image.png'},
-  'logan_sargeant':   {num:'2',  photo:'https://media.formula1.com/image/upload/f_auto/q_auto/v1677244985/content/dam/fom-website/drivers/L/LOGSAR01_Logan_Sargeant/logsar01.png.transform/2col-retina/image.png'},
+  /* 2025 season — photos from Wikipedia (CORS-safe, no hotlink protection) */
+  'andrea_kimi_antonelli': {num:'12', team:'Mercedes',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/2025_Bahrain_Grand_Prix%2C_Andrea_Kimi_Antonelli.jpg/300px-2025_Bahrain_Grand_Prix%2C_Andrea_Kimi_Antonelli.jpg'},
+  'lewis_hamilton': {num:'44', team:'Ferrari',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Lewis_Hamilton_2016_Malaysia_2.jpg/300px-Lewis_Hamilton_2016_Malaysia_2.jpg'},
+  'george_russell': {num:'63', team:'Mercedes',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/2022_Bahrain_Grand_Prix_%2852744929809%29.jpg/300px-2022_Bahrain_Grand_Prix_%2852744929809%29.jpg'},
+  'charles_leclerc': {num:'16', team:'Ferrari',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Charles_Leclerc_2019_Portrait.jpg/300px-Charles_Leclerc_2019_Portrait.jpg'},
+  'oscar_piastri': {num:'81', team:'McLaren',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Oscar_Piastri_2023_Bahrain.jpg/300px-Oscar_Piastri_2023_Bahrain.jpg'},
+  'lando_norris': {num:'4', team:'McLaren',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Lando_Norris_2023_Bahrain.jpg/300px-Lando_Norris_2023_Bahrain.jpg'},
+  'max_verstappen': {num:'1', team:'Red Bull Racing',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Max_Verstappen_2022_Bahrain_2.jpg/300px-Max_Verstappen_2022_Bahrain_2.jpg'},
+  'isack_hadjar': {num:'6', team:'RB',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Isack_Hadjar_2023_%28cropped%29.jpg/300px-Isack_Hadjar_2023_%28cropped%29.jpg'},
+  'liam_lawson': {num:'30', team:'RB',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/e/ef/Liam_Lawson_2023_Singapore.jpg/300px-Liam_Lawson_2023_Singapore.jpg'},
+  'pierre_gasly': {num:'10', team:'Alpine',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/2022_Bahrain_Grand_Prix_%2852744945228%29_%28cropped%29.jpg/300px-2022_Bahrain_Grand_Prix_%2852744945228%29_%28cropped%29.jpg'},
+  'oliver_bearman': {num:'87', team:'Haas',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Oliver_Bearman_2023_%28cropped%29.jpg/300px-Oliver_Bearman_2023_%28cropped%29.jpg'},
+  'franco_colapinto': {num:'43', team:'Alpine',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Franco_Colapinto_2024_Singapore_%28cropped%29.jpg/300px-Franco_Colapinto_2024_Singapore_%28cropped%29.jpg'},
+  'ayumu_iwasa': {num:'41', team:'RB',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Ayumu_Iwasa_2022_%28cropped%29.jpg/300px-Ayumu_Iwasa_2022_%28cropped%29.jpg'},
+  'carlos_sainz': {num:'55', team:'Williams',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Carlos_Sainz_2019_Bahrain_3_%28cropped%29.jpg/300px-Carlos_Sainz_2019_Bahrain_3_%28cropped%29.jpg'},
+  'alexander_albon': {num:'23', team:'Williams',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Alexander_Albon_2022_%28cropped%29.jpg/300px-Alexander_Albon_2022_%28cropped%29.jpg'},
+  'esteban_ocon': {num:'31', team:'Haas',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Esteban_Ocon_2022_Bahrain_%28cropped%29.jpg/300px-Esteban_Ocon_2022_Bahrain_%28cropped%29.jpg'},
+  'gabriel_bortoleto': {num:'5', team:'Kick Sauber',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Gabriel_Bortoleto_2024_Macau_%28cropped%29.jpg/300px-Gabriel_Bortoleto_2024_Macau_%28cropped%29.jpg'},
+  'fernando_alonso': {num:'14', team:'Aston Martin',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Fernando_Alonso_2021_%28cropped%29.jpg/300px-Fernando_Alonso_2021_%28cropped%29.jpg'},
+  'nico_hulkenberg': {num:'27', team:'Kick Sauber',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Nico_H%C3%BClkenberg_2023_Bahrain_%28cropped%29.jpg/300px-Nico_H%C3%BClkenberg_2023_Bahrain_%28cropped%29.jpg'},
+  'jack_doohan': {num:'7', team:'Alpine',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Jack_Doohan_2023_%28cropped%29.jpg/300px-Jack_Doohan_2023_%28cropped%29.jpg'},
+  'valtteri_bottas': {num:'77', team:'Cadillac',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Valtteri_Bottas_2022_Bahrain.jpg/300px-Valtteri_Bottas_2022_Bahrain.jpg'},
+  'sergio_perez': {num:'11', team:'Cadillac',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/Sergio_P%C3%A9rez_2022_Bahrain_%28cropped%29.jpg/300px-Sergio_P%C3%A9rez_2022_Bahrain_%28cropped%29.jpg'},
+  'lance_stroll': {num:'18', team:'Aston Martin',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Lance_Stroll_2022_Bahrain_%28cropped%29.jpg/300px-Lance_Stroll_2022_Bahrain_%28cropped%29.jpg'},
+  'yuki_tsunoda': {num:'22', team:'Red Bull Racing',
+    photo:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Yuki_Tsunoda_2023_Bahrain_%28cropped%29.jpg/300px-Yuki_Tsunoda_2023_Bahrain_%28cropped%29.jpg'},
 };
 function driverKey(first, last) {
-  return (first+'_'+last).toLowerCase().replace(/\s+/g,'_').replace(/[^a-z_]/g,'');
+  const normalize = s => s.toLowerCase()
+    .replace(/ü/g,'u').replace(/ö/g,'o').replace(/ä/g,'a')
+    .replace(/é/g,'e').replace(/è/g,'e').replace(/ê/g,'e')
+    .replace(/í/g,'i').replace(/ó/g,'o').replace(/ú/g,'u')
+    .replace(/ñ/g,'n').replace(/ç/g,'c')
+    .replace(/\s+/g,'_').replace(/[^a-z_]/g,'');
+  return normalize(first)+'_'+normalize(last);
 }
 function driverPhoto(first, last) {
   const key = driverKey(first, last);
-  return F1_DRIVERS[key]?.photo || '';
+  const d = F1_DRIVERS[key];
+  if(d) return d.photo;
+  /* fallback: try last name only */
+  const lkey = last.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z_]/g,'');
+  const match = Object.entries(F1_DRIVERS).find(([k])=>k.endsWith('_'+lkey));
+  return match?.[1]?.photo || '';
 }
 function driverNum(first, last) {
   const key = driverKey(first, last);
-  return F1_DRIVERS[key]?.num || '';
+  const d = F1_DRIVERS[key];
+  if(d) return d.num;
+  const lkey = last.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z_]/g,'');
+  const match = Object.entries(F1_DRIVERS).find(([k])=>k.endsWith('_'+lkey));
+  return match?.[1]?.num || '';
+}
+function driverTeam(first, last) {
+  const key = driverKey(first, last);
+  const d = F1_DRIVERS[key];
+  if(d) return d.team;
+  const lkey = last.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z_]/g,'');
+  const match = Object.entries(F1_DRIVERS).find(([k])=>k.endsWith('_'+lkey));
+  return match?.[1]?.team || '';
 }
 
 /* Constructor logos — Wikipedia/Wikimedia transparent PNGs */
 const F1_TEAMS = {
-  'red bull racing':    {logo:'https://upload.wikimedia.org/wikipedia/en/thumb/8/8f/Red_Bull_Racing_logo.svg/200px-Red_Bull_Racing_logo.svg.png', color:'#1E3A6E'},
-  'mclaren':            {logo:'https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/McLaren_Racing_logo.svg/200px-McLaren_Racing_logo.svg.png', color:'#FF8000'},
-  'ferrari':            {logo:'https://upload.wikimedia.org/wikipedia/en/thumb/d/d4/Scuderia_Ferrari_Logo.svg/200px-Scuderia_Ferrari_Logo.svg.png', color:'#E8002D'},
-  'mercedes':           {logo:'https://upload.wikimedia.org/wikipedia/en/thumb/3/31/Mercedes_AMG_Petronas_F1_logo.svg/200px-Mercedes_AMG_Petronas_F1_logo.svg.png', color:'#27F4D2'},
-  'aston martin':       {logo:'https://upload.wikimedia.org/wikipedia/en/thumb/8/8e/Aston_Martin_F1_Team_logo.svg/200px-Aston_Martin_F1_Team_logo.svg.png', color:'#229971'},
-  'alpine f1 team':     {logo:'https://upload.wikimedia.org/wikipedia/en/thumb/e/ec/Alpine_F1_Team_2022_logo.svg/200px-Alpine_F1_Team_2022_logo.svg.png', color:'#0093CC'},
-  'alpine':             {logo:'https://upload.wikimedia.org/wikipedia/en/thumb/e/ec/Alpine_F1_Team_2022_logo.svg/200px-Alpine_F1_Team_2022_logo.svg.png', color:'#0093CC'},
-  'haas f1 team':       {logo:'https://upload.wikimedia.org/wikipedia/en/thumb/2/28/Haas_F1_Team_logo.svg/200px-Haas_F1_Team_logo.svg.png', color:'#B6BABD'},
-  'haas':               {logo:'https://upload.wikimedia.org/wikipedia/en/thumb/2/28/Haas_F1_Team_logo.svg/200px-Haas_F1_Team_logo.svg.png', color:'#B6BABD'},
-  'rb':                 {logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Visa_Cash_App_RB_F1_Team_Logo.svg/200px-Visa_Cash_App_RB_F1_Team_Logo.svg.png', color:'#6692FF'},
-  'visa cash app rb':   {logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Visa_Cash_App_RB_F1_Team_Logo.svg/200px-Visa_Cash_App_RB_F1_Team_Logo.svg.png', color:'#6692FF'},
-  'williams':           {logo:'https://upload.wikimedia.org/wikipedia/en/thumb/b/b8/Williams_Racing_2020_logo.svg/200px-Williams_Racing_2020_logo.svg.png', color:'#005AFF'},
-  'kick sauber':        {logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Kick_Sauber_F1_Team_2024_logo.svg/200px-Kick_Sauber_F1_Team_2024_logo.svg.png', color:'#52E252'},
-  'sauber':             {logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Kick_Sauber_F1_Team_2024_logo.svg/200px-Kick_Sauber_F1_Team_2024_logo.svg.png', color:'#52E252'},
+  'red bull racing': {color:'#1E3A6E',
+    logo:'https://upload.wikimedia.org/wikipedia/en/thumb/8/8f/Red_Bull_Racing_logo.svg/200px-Red_Bull_Racing_logo.svg.png'},
+  'mclaren': {color:'#FF8000',
+    logo:'https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/McLaren_Racing_logo.svg/200px-McLaren_Racing_logo.svg.png'},
+  'ferrari': {color:'#E8002D',
+    logo:'https://upload.wikimedia.org/wikipedia/en/thumb/d/d4/Scuderia_Ferrari_Logo.svg/200px-Scuderia_Ferrari_Logo.svg.png'},
+  'mercedes': {color:'#27F4D2',
+    logo:'https://upload.wikimedia.org/wikipedia/en/thumb/3/31/Mercedes_AMG_Petronas_F1_logo.svg/200px-Mercedes_AMG_Petronas_F1_logo.svg.png'},
+  'aston martin': {color:'#229971',
+    logo:'https://upload.wikimedia.org/wikipedia/en/thumb/8/8e/Aston_Martin_F1_Team_logo.svg/200px-Aston_Martin_F1_Team_logo.svg.png'},
+  'alpine': {color:'#0093CC',
+    logo:'https://upload.wikimedia.org/wikipedia/en/thumb/e/ec/Alpine_F1_Team_2022_logo.svg/200px-Alpine_F1_Team_2022_logo.svg.png'},
+  'haas': {color:'#B6BABD',
+    logo:'https://upload.wikimedia.org/wikipedia/en/thumb/2/28/Haas_F1_Team_logo.svg/200px-Haas_F1_Team_logo.svg.png'},
+  'rb': {color:'#6692FF',
+    logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Visa_Cash_App_RB_F1_Team_Logo.svg/200px-Visa_Cash_App_RB_F1_Team_Logo.svg.png'},
+  'racing bulls': {color:'#6692FF',
+    logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Visa_Cash_App_RB_F1_Team_Logo.svg/200px-Visa_Cash_App_RB_F1_Team_Logo.svg.png'},
+  'williams': {color:'#005AFF',
+    logo:'https://upload.wikimedia.org/wikipedia/en/thumb/b/b8/Williams_Racing_2020_logo.svg/200px-Williams_Racing_2020_logo.svg.png'},
+  'kick sauber': {color:'#52E252',
+    logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Kick_Sauber_F1_Team_2024_logo.svg/200px-Kick_Sauber_F1_Team_2024_logo.svg.png'},
+  'sauber': {color:'#52E252',
+    logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Kick_Sauber_F1_Team_2024_logo.svg/200px-Kick_Sauber_F1_Team_2024_logo.svg.png'},
+  'cadillac': {color:'#D4AF37',
+    logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/Cadillac_logo.svg/200px-Cadillac_logo.svg.png'},
 };
 function teamInfo(name) {
   const key = (name||'').toLowerCase().trim();
@@ -1519,31 +1622,41 @@ function teamInfo(name) {
 /* Circuit maps — SVG track outlines from Wikipedia */
 const F1_CIRCUITS = {
   'bahrain':      'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Bahrain_International_Circuit--Sakhir--2004.svg/300px-Bahrain_International_Circuit--Sakhir--2004.svg.png',
+  'sakhir':       'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Bahrain_International_Circuit--Sakhir--2004.svg/300px-Bahrain_International_Circuit--Sakhir--2004.svg.png',
   'jeddah':       'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Jeddah_Corniche_Circuit_2021.svg/300px-Jeddah_Corniche_Circuit_2021.svg.png',
+  'albert park':  'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Albert_Park_circuit_2020.svg/300px-Albert_Park_circuit_2020.svg.png',
   'melbourne':    'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Albert_Park_circuit_2020.svg/300px-Albert_Park_circuit_2020.svg.png',
   'suzuka':       'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Suzuka_circuit_map.svg/300px-Suzuka_circuit_map.svg.png',
   'shanghai':     'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Shanghai_Circuit.svg/300px-Shanghai_Circuit.svg.png',
   'miami':        'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Miami_International_Autodrome_2022.svg/300px-Miami_International_Autodrome_2022.svg.png',
   'imola':        'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Autodromo_Enzo_e_Dino_Ferrari_2023.svg/300px-Autodromo_Enzo_e_Dino_Ferrari_2023.svg.png',
+  'monte':        'https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Monte-Carlo_Formula_1_track_map.svg/300px-Monte-Carlo_Formula_1_track_map.svg.png',
   'monaco':       'https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Monte-Carlo_Formula_1_track_map.svg/300px-Monte-Carlo_Formula_1_track_map.svg.png',
   'barcelona':    'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/Circuit_de_Barcelona-Catalunya_2017.svg/300px-Circuit_de_Barcelona-Catalunya_2017.svg.png',
+  'catalunya':    'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/Circuit_de_Barcelona-Catalunya_2017.svg/300px-Circuit_de_Barcelona-Catalunya_2017.svg.png',
+  'gilles villeneuve':'https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/Circuit_Gilles_Villeneuve.svg/300px-Circuit_Gilles_Villeneuve.svg.png',
   'montreal':     'https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/Circuit_Gilles_Villeneuve.svg/300px-Circuit_Gilles_Villeneuve.svg.png',
+  'red bull ring':'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Red_Bull_Ring_2016.svg/300px-Red_Bull_Ring_2016.svg.png',
   'spielberg':    'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Red_Bull_Ring_2016.svg/300px-Red_Bull_Ring_2016.svg.png',
   'silverstone':  'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Silverstone_Circuit_2011.svg/300px-Silverstone_Circuit_2011.svg.png',
+  'hungaroring':  'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/Hungaroring.svg/300px-Hungaroring.svg.png',
   'budapest':     'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/Hungaroring.svg/300px-Hungaroring.svg.png',
   'spa':          'https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Spa-Francorchamps_2021.svg/300px-Spa-Francorchamps_2021.svg.png',
   'zandvoort':    'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Circuit_Zandvoort.svg/300px-Circuit_Zandvoort.svg.png',
   'monza':        'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Monza_track_map.svg/300px-Monza_track_map.svg.png',
   'baku':         'https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Baku_Formula_1_circuit_2016.svg/300px-Baku_Formula_1_circuit_2016.svg.png',
   'singapore':    'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/Marina_Bay_Street_Circuit_2023.svg/300px-Marina_Bay_Street_Circuit_2023.svg.png',
+  'marina bay':   'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/Marina_Bay_Street_Circuit_2023.svg/300px-Marina_Bay_Street_Circuit_2023.svg.png',
+  'americas':     'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e2/Circuit_of_the_Americas.svg/300px-Circuit_of_the_Americas.svg.png',
   'austin':       'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e2/Circuit_of_the_Americas.svg/300px-Circuit_of_the_Americas.svg.png',
-  'mexico city':  'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Aut%C3%B3dromo_Hermanos_Rodr%C3%ADguez_2015.svg/300px-Aut%C3%B3dromo_Hermanos_Rodr%C3%ADguez_2015.svg.png',
+  'mexico':       'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Aut%C3%B3dromo_Hermanos_Rodr%C3%ADguez_2015.svg/300px-Aut%C3%B3dromo_Hermanos_Rodr%C3%ADguez_2015.svg.png',
   'interlagos':   'https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/Aut%C3%B3dromo_Jos%C3%A9_Carlos_Pace_2012.svg/300px-Aut%C3%B3dromo_Jos%C3%A9_Carlos_Pace_2012.svg.png',
+  'sao paulo':    'https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/Aut%C3%B3dromo_Jos%C3%A9_Carlos_Pace_2012.svg/300px-Aut%C3%B3dromo_Jos%C3%A9_Carlos_Pace_2012.svg.png',
   'las vegas':    'https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Las_Vegas_Street_Circuit_2023.svg/300px-Las_Vegas_Street_Circuit_2023.svg.png',
   'lusail':       'https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Lusail_Circuit_2023.svg/300px-Lusail_Circuit_2023.svg.png',
+  'qatar':        'https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Lusail_Circuit_2023.svg/300px-Lusail_Circuit_2023.svg.png',
   'yas marina':   'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Yas_Marina_Circuit_2021.svg/300px-Yas_Marina_Circuit_2021.svg.png',
   'abu dhabi':    'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Yas_Marina_Circuit_2021.svg/300px-Yas_Marina_Circuit_2021.svg.png',
-  'sakhir':       'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Bahrain_International_Circuit--Sakhir--2004.svg/300px-Bahrain_International_Circuit--Sakhir--2004.svg.png',
 };
 function circuitMap(circuitName, locality) {
   const s = ((circuitName||'')+(locality||'')).toLowerCase();
@@ -1695,7 +1808,9 @@ async function loadF1Drivers(){
       const last=r.Driver?.familyName||'';
       const photo=driverPhoto(first,last);
       const num=driverNum(first,last)||r.Driver?.permanentNumber||'';
-      const team=r.Constructors?.[0]?.name||'';
+      const teamFromAPI=r.Constructors?.[0]?.name||'';
+      const teamFromDB=driverTeam(first,last);
+      const team=teamFromDB||teamFromAPI;
       const pc=posCls[i]||'';
       return `<div class="f1-driver-card">
         <div class="f1-driver-pos ${pc}">${r.position}</div>
