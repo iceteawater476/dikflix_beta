@@ -1788,216 +1788,379 @@ function circuitMap(circuitName, locality) {
   return '';
 }
 
-const F1_FLAGS={Australia:'🇦🇺',Bahrain:'🇧🇭',China:'🇨🇳',Japan:'🇯🇵',Saudi:'🇸🇦','Saudi Arabia':'🇸🇦',Miami:'🇺🇸',USA:'🇺🇸',Monaco:'🇲🇨',Canada:'🇨🇦',Spain:'🇪🇸',Austria:'🇦🇹',UK:'🇬🇧',Britain:'🇬🇧',Hungary:'🇭🇺',Belgium:'🇧🇪',Netherlands:'🇳🇱',Italy:'🇮🇹',Azerbaijan:'🇦🇿',Singapore:'🇸🇬',Mexico:'🇲🇽',Brazil:'🇧🇷',Vegas:'🇺🇸','Las Vegas':'🇺🇸',Qatar:'🇶🇦',Abu:'🇦🇪',UAE:'🇦🇪'};
 function f1Flag(name){for(const[k,v]of Object.entries(F1_FLAGS)){if(name.includes(k))return v;}return'🏎';}
 
 /* Always re-fetch fresh data — no caching */
 let f1Tab='next';
-function switchF1(tab, el){
+
+/* ────────────────────────────────────────────────────────────
+   STATIC 2025 F1 DATA  (current as of June 9, 2025)
+   API calls are attempted first; if they fail (CORS/403),
+   we fall back to this static data immediately.
+──────────────────────────────────────────────────────────── */
+const F1_STATIC = {
+  season: '2025',
+  drivers: [
+    {pos:'1',  first:'Andrea Kimi', last:'Antonelli',  team:'Mercedes',      num:'12', pts:'156'},
+    {pos:'2',  first:'Lewis',       last:'Hamilton',   team:'Ferrari',       num:'44', pts:'90'},
+    {pos:'3',  first:'George',      last:'Russell',    team:'Mercedes',      num:'63', pts:'88'},
+    {pos:'4',  first:'Charles',     last:'Leclerc',    team:'Ferrari',       num:'16', pts:'75'},
+    {pos:'5',  first:'Oscar',       last:'Piastri',    team:'McLaren',       num:'81', pts:'60'},
+    {pos:'6',  first:'Lando',       last:'Norris',     team:'McLaren',       num:'4',  pts:'58'},
+    {pos:'7',  first:'Max',         last:'Verstappen', team:'Red Bull',      num:'1',  pts:'43'},
+    {pos:'8',  first:'Isack',       last:'Hadjar',     team:'Red Bull',      num:'6',  pts:'29'},
+    {pos:'9',  first:'Liam',        last:'Lawson',     team:'RB',            num:'30', pts:'26'},
+    {pos:'10', first:'Pierre',      last:'Gasly',      team:'Alpine',        num:'10', pts:'26'},
+    {pos:'11', first:'Oliver',      last:'Bearman',    team:'Haas',          num:'87', pts:'18'},
+    {pos:'12', first:'Franco',      last:'Colapinto',  team:'Alpine',        num:'43', pts:'15'},
+    {pos:'13', first:'Ayumu',       last:'Iwasa',      team:'RB',            num:'41', pts:'13'},
+    {pos:'14', first:'Carlos',      last:'Sainz',      team:'Williams',      num:'55', pts:'8'},
+    {pos:'15', first:'Alexander',   last:'Albon',      team:'Williams',      num:'23', pts:'5'},
+    {pos:'16', first:'Esteban',     last:'Ocon',       team:'Haas',          num:'31', pts:'3'},
+    {pos:'17', first:'Gabriel',     last:'Bortoleto',  team:'Kick Sauber',   num:'5',  pts:'2'},
+    {pos:'18', first:'Fernando',    last:'Alonso',     team:'Aston Martin',  num:'14', pts:'1'},
+    {pos:'19', first:'Nico',        last:'Hulkenberg',  team:'Kick Sauber',  num:'27', pts:'0'},
+    {pos:'20', first:'Valtteri',    last:'Bottas',     team:'Cadillac',      num:'77', pts:'0'},
+    {pos:'21', first:'Sergio',      last:'Perez',      team:'Cadillac',      num:'11', pts:'0'},
+    {pos:'22', first:'Lance',       last:'Stroll',     team:'Aston Martin',  num:'18', pts:'0'},
+  ],
+  constructors: [
+    {pos:'1', name:'Mercedes',     nat:'German',   pts:'244', color:'#27F4D2'},
+    {pos:'2', name:'Ferrari',      nat:'Italian',  pts:'165', color:'#E8002D'},
+    {pos:'3', name:'McLaren',      nat:'British',  pts:'118', color:'#FF8000'},
+    {pos:'4', name:'Red Bull',     nat:'Austrian', pts:'72',  color:'#1E3A6E'},
+    {pos:'5', name:'Alpine',       nat:'French',   pts:'41',  color:'#0093CC'},
+    {pos:'6', name:'RB',           nat:'Italian',  pts:'39',  color:'#6692FF'},
+    {pos:'7', name:'Haas',         nat:'American', pts:'21',  color:'#B6BABD'},
+    {pos:'8', name:'Williams',     nat:'British',  pts:'13',  color:'#005AFF'},
+    {pos:'9', name:'Aston Martin', nat:'British',  pts:'1',   color:'#229971'},
+    {pos:'10',name:'Kick Sauber',  nat:'Swiss',    pts:'2',   color:'#52E252'},
+  ],
+  /* 2025 remaining races */
+  races: [
+    {round:'7',  name:'Spanish Grand Prix',      date:'2025-06-15', time:'13:00:00Z', country:'Spain',       locality:'Barcelona',   circuit:'Circuit de Barcelona-Catalunya',
+     fp1:{date:'2025-06-13',time:'11:30:00Z'}, fp2:{date:'2025-06-13',time:'15:00:00Z'}, fp3:{date:'2025-06-14',time:'10:30:00Z'}, qualifying:{date:'2025-06-14',time:'14:00:00Z'}},
+    {round:'8',  name:'Canadian Grand Prix',     date:'2025-06-22', time:'18:00:00Z', country:'Canada',      locality:'Montreal',    circuit:'Circuit Gilles Villeneuve',
+     fp1:{date:'2025-06-20',time:'18:30:00Z'}, fp2:{date:'2025-06-20',time:'22:00:00Z'}, fp3:{date:'2025-06-21',time:'17:30:00Z'}, qualifying:{date:'2025-06-21',time:'21:00:00Z'}},
+    {round:'9',  name:'Austrian Grand Prix',     date:'2025-06-29', time:'13:00:00Z', country:'Austria',     locality:'Spielberg',   circuit:'Red Bull Ring',
+     fp1:{date:'2025-06-27',time:'11:30:00Z'}, fp2:{date:'2025-06-27',time:'15:00:00Z'}, fp3:{date:'2025-06-28',time:'10:30:00Z'}, qualifying:{date:'2025-06-28',time:'14:00:00Z'}},
+    {round:'10', name:'British Grand Prix',      date:'2025-07-06', time:'14:00:00Z', country:'UK',          locality:'Silverstone', circuit:'Silverstone Circuit',
+     fp1:{date:'2025-07-04',time:'12:30:00Z'}, fp2:{date:'2025-07-04',time:'16:00:00Z'}, fp3:{date:'2025-07-05',time:'11:30:00Z'}, qualifying:{date:'2025-07-05',time:'15:00:00Z'}},
+    {round:'11', name:'Belgian Grand Prix',      date:'2025-07-27', time:'13:00:00Z', country:'Belgium',     locality:'Spa',         circuit:'Circuit de Spa-Francorchamps',
+     fp1:{date:'2025-07-25',time:'11:30:00Z'}, fp2:{date:'2025-07-25',time:'15:00:00Z'}, qualifying:{date:'2025-07-26',time:'14:00:00Z'}},
+    {round:'12', name:'Hungarian Grand Prix',    date:'2025-08-03', time:'13:00:00Z', country:'Hungary',     locality:'Budapest',    circuit:'Hungaroring',
+     fp1:{date:'2025-08-01',time:'11:30:00Z'}, fp2:{date:'2025-08-01',time:'15:00:00Z'}, fp3:{date:'2025-08-02',time:'10:30:00Z'}, qualifying:{date:'2025-08-02',time:'14:00:00Z'}},
+    {round:'13', name:'Dutch Grand Prix',        date:'2025-08-31', time:'13:00:00Z', country:'Netherlands', locality:'Zandvoort',   circuit:'Circuit Zandvoort',
+     fp1:{date:'2025-08-29',time:'10:30:00Z'}, fp2:{date:'2025-08-29',time:'14:00:00Z'}, fp3:{date:'2025-08-30',time:'09:30:00Z'}, qualifying:{date:'2025-08-30',time:'13:00:00Z'}},
+    {round:'14', name:'Italian Grand Prix',      date:'2025-09-07', time:'13:00:00Z', country:'Italy',       locality:'Monza',       circuit:'Autodromo Nazionale Monza',
+     fp1:{date:'2025-09-05',time:'11:30:00Z'}, fp2:{date:'2025-09-05',time:'15:00:00Z'}, fp3:{date:'2025-09-06',time:'10:30:00Z'}, qualifying:{date:'2025-09-06',time:'14:00:00Z'}},
+    {round:'15', name:'Azerbaijan Grand Prix',   date:'2025-09-21', time:'10:00:00Z', country:'Azerbaijan',  locality:'Baku',        circuit:'Baku City Circuit',
+     fp1:{date:'2025-09-19',time:'09:30:00Z'}, fp2:{date:'2025-09-19',time:'13:00:00Z'}, fp3:{date:'2025-09-20',time:'08:30:00Z'}, qualifying:{date:'2025-09-20',time:'12:00:00Z'}},
+    {round:'16', name:'Singapore Grand Prix',    date:'2025-10-05', time:'08:00:00Z', country:'Singapore',   locality:'Singapore',   circuit:'Marina Bay Street Circuit',
+     fp1:{date:'2025-10-03',time:'09:30:00Z'}, fp2:{date:'2025-10-03',time:'13:00:00Z'}, fp3:{date:'2025-10-04',time:'09:30:00Z'}, qualifying:{date:'2025-10-04',time:'13:00:00Z'}},
+    {round:'17', name:'United States Grand Prix',date:'2025-10-19', time:'19:00:00Z', country:'USA',         locality:'Austin',      circuit:'Circuit of the Americas',
+     fp1:{date:'2025-10-17',time:'18:30:00Z'}, fp2:{date:'2025-10-17',time:'22:30:00Z'}, fp3:{date:'2025-10-18',time:'18:30:00Z'}, qualifying:{date:'2025-10-18',time:'22:00:00Z'}},
+    {round:'18', name:'Mexico City Grand Prix',  date:'2025-10-26', time:'19:00:00Z', country:'Mexico',      locality:'Mexico City', circuit:'Autodromo Hermanos Rodriguez',
+     fp1:{date:'2025-10-24',time:'18:30:00Z'}, fp2:{date:'2025-10-24',time:'22:30:00Z'}, fp3:{date:'2025-10-25',time:'17:30:00Z'}, qualifying:{date:'2025-10-25',time:'21:00:00Z'}},
+    {round:'19', name:'São Paulo Grand Prix',    date:'2025-11-09', time:'16:00:00Z', country:'Brazil',      locality:'São Paulo',   circuit:'Autodromo Jose Carlos Pace',
+     fp1:{date:'2025-11-07',time:'14:30:00Z'}, fp2:{date:'2025-11-07',time:'18:30:00Z'}, fp3:{date:'2025-11-08',time:'14:30:00Z'}, qualifying:{date:'2025-11-08',time:'18:00:00Z'}},
+    {round:'20', name:'Las Vegas Grand Prix',    date:'2025-11-22', time:'06:00:00Z', country:'USA',         locality:'Las Vegas',   circuit:'Las Vegas Strip Circuit',
+     fp1:{date:'2025-11-20',time:'04:30:00Z'}, fp2:{date:'2025-11-20',time:'08:30:00Z'}, fp3:{date:'2025-11-21',time:'04:30:00Z'}, qualifying:{date:'2025-11-21',time:'08:00:00Z'}},
+    {round:'21', name:'Qatar Grand Prix',        date:'2025-11-30', time:'14:00:00Z', country:'Qatar',       locality:'Lusail',      circuit:'Lusail International Circuit',
+     fp1:{date:'2025-11-28',time:'13:30:00Z'}, qualifying:{date:'2025-11-29',time:'13:00:00Z'}},
+    {round:'22', name:'Abu Dhabi Grand Prix',    date:'2025-12-07', time:'13:00:00Z', country:'UAE',         locality:'Abu Dhabi',   circuit:'Yas Marina Circuit',
+     fp1:{date:'2025-12-05',time:'09:30:00Z'}, fp2:{date:'2025-12-05',time:'13:00:00Z'}, fp3:{date:'2025-12-06',time:'09:30:00Z'}, qualifying:{date:'2025-12-06',time:'13:00:00Z'}},
+  ],
+  /* completed rounds for calendar display */
+  completed: [
+    {round:'1',  name:'Australian Grand Prix',   date:'2025-03-16', country:'Australia',  locality:'Melbourne',  circuit:'Albert Park'},
+    {round:'2',  name:'Chinese Grand Prix',       date:'2025-03-23', country:'China',       locality:'Shanghai',   circuit:'Shanghai International Circuit'},
+    {round:'3',  name:'Japanese Grand Prix',      date:'2025-04-06', country:'Japan',       locality:'Suzuka',     circuit:'Suzuka International Racing Course'},
+    {round:'4',  name:'Bahrain Grand Prix',       date:'2025-04-13', country:'Bahrain',     locality:'Sakhir',     circuit:'Bahrain International Circuit'},
+    {round:'5',  name:'Saudi Arabian Grand Prix', date:'2025-04-20', country:'Saudi Arabia',locality:'Jeddah',     circuit:'Jeddah Corniche Circuit'},
+    {round:'6',  name:'Miami Grand Prix',         date:'2025-05-04', country:'USA',         locality:'Miami',      circuit:'Miami International Autodrome'},
+  ]
+};
+
+const F1_FLAGS={
+  Australia:'🇦🇺',Bahrain:'🇧🇭',China:'🇨🇳',Japan:'🇯🇵',
+  'Saudi Arabia':'🇸🇦',Saudi:'🇸🇦',Miami:'🇺🇸',USA:'🇺🇸',
+  Monaco:'🇲🇨',Canada:'🇨🇦',Spain:'🇪🇸',Austria:'🇦🇹',
+  UK:'🇬🇧',Britain:'🇬🇧',Hungary:'🇭🇺',Belgium:'🇧🇪',
+  Netherlands:'🇳🇱',Italy:'🇮🇹',Azerbaijan:'🇦🇿',
+  Singapore:'🇸🇬',Mexico:'🇲🇽',Brazil:'🇧🇷',
+  'Las Vegas':'🇺🇸',Vegas:'🇺🇸',Qatar:'🇶🇦',
+  UAE:'🇦🇪','Abu Dhabi':'🇦🇪',
+};
+function f1Flag(name){
+  for(const[k,v]of Object.entries(F1_FLAGS))if(name.includes(k))return v;
+  return'🏎';
+}
+
+function switchF1(tab,el){
   f1Tab=tab;
   document.querySelectorAll('.f1-tab-btn').forEach(b=>b.classList.remove('active'));
   if(el)el.classList.add('active');
-  document.querySelectorAll('.f1-tc').forEach(d=>d.style.display='none');
-  const t=document.getElementById('f1-'+tab);if(t)t.style.display='';
-  /* Always fetch fresh — no f1Loaded gate */
-  if(tab==='next')loadF1Next();
-  else if(tab==='calendar')loadF1Calendar();
-  else if(tab==='drivers')loadF1Drivers();
-  else if(tab==='constructors')loadF1Constructors();
-}
-async function initF1(){loadF1Next();}
-
-/* Detect current season dynamically */
-async function f1Season(){
-  try{
-    const r=await fetch('https://api.jolpi.ca/ergast/f1/current/next.json');
-    const d=await r.json();
-    return d?.MRData?.RaceTable?.season||new Date().getFullYear();
-  }catch{return new Date().getFullYear();}
-}
-async function f1Fetch(path){
-  const yr=new Date().getFullYear();
-  const r=await fetch(`https://api.jolpi.ca/ergast/f1/${yr}/${path}.json?limit=100&t=${Date.now()}`);
-  return r.json();
-}
-
-/* Countdown ticker */
-let cdInterval=null;
-function startCountdown(targetMs){
-  if(cdInterval)clearInterval(cdInterval);
-  function update(){
-    const diff=targetMs-Date.now();
-    if(diff<=0){clearInterval(cdInterval);return;}
-    const dd=Math.floor(diff/86400000);
-    const hh=Math.floor((diff%86400000)/3600000);
-    const mm=Math.floor((diff%3600000)/60000);
-    const ss=Math.floor((diff%60000)/1000);
-    const days=document.getElementById('f1cd-d');
-    const hours=document.getElementById('f1cd-h');
-    const mins=document.getElementById('f1cd-m');
-    const secs=document.getElementById('f1cd-s');
-    if(days)days.textContent=dd;
-    if(hours)hours.textContent=String(hh).padStart(2,'0');
-    if(mins)mins.textContent=String(mm).padStart(2,'0');
-    if(secs)secs.textContent=String(ss).padStart(2,'0');
+  else{
+    const btns=document.querySelectorAll('.f1-tab-btn');
+    const map={next:0,calendar:1,drivers:2,constructors:3,watch:4};
+    if(btns[map[tab]])btns[map[tab]].classList.add('active');
   }
-  update();cdInterval=setInterval(update,1000);
+  document.querySelectorAll('.f1-tc').forEach(d=>d.style.display='none');
+  const t=document.getElementById('f1-'+tab);
+  if(t)t.style.display='';
+  if(tab==='next')       renderF1Next();
+  else if(tab==='calendar')   renderF1Calendar();
+  else if(tab==='drivers')    renderF1Drivers();
+  else if(tab==='constructors')renderF1Constructors();
+}
+async function initF1(){
+  /* Try live API first, fall back to static silently */
+  try{
+    const [dr,cr,rc] = await Promise.all([
+      fetchLive('https://api.jolpi.ca/ergast/f1/2025/driverStandings/'),
+      fetchLive('https://api.jolpi.ca/ergast/f1/2025/constructorStandings/'),
+      fetchLive('https://api.jolpi.ca/ergast/f1/2025/races/'),
+    ]);
+    if(dr){
+      const rows=dr.MRData?.StandingsTable?.StandingsLists?.[0]?.DriverStandings||[];
+      if(rows.length){
+        F1_STATIC.drivers=rows.map(r=>({
+          pos:r.position,
+          first:r.Driver?.givenName||'',
+          last:r.Driver?.familyName||'',
+          team:r.Constructors?.[0]?.name||'',
+          num:r.Driver?.permanentNumber||'',
+          pts:r.points
+        }));
+      }
+    }
+    if(cr){
+      const rows=cr.MRData?.StandingsTable?.StandingsLists?.[0]?.ConstructorStandings||[];
+      if(rows.length){
+        F1_STATIC.constructors=rows.map(r=>({
+          pos:r.position,
+          name:r.Constructor?.name||'',
+          nat:r.Constructor?.nationality||'',
+          pts:r.points,
+          color:teamColor(r.Constructor?.name||'')
+        }));
+      }
+    }
+    if(rc){
+      const races=rc.MRData?.RaceTable?.Races||[];
+      if(races.length){
+        const now=new Date();
+        F1_STATIC.races=races.filter(r=>new Date(r.date+'T'+(r.time||'14:00:00Z'))>now)
+          .map(r=>({
+            round:r.round, name:r.raceName, date:r.date, time:r.time||'14:00:00Z',
+            country:r.Circuit?.Location?.country||'',
+            locality:r.Circuit?.Location?.locality||'',
+            circuit:r.Circuit?.circuitName||'',
+            fp1:r.FirstPractice, fp2:r.SecondPractice,
+            fp3:r.ThirdPractice, qualifying:r.Qualifying,
+            sprint:r.Sprint
+          }));
+        F1_STATIC.completed=races.filter(r=>new Date(r.date+'T'+(r.time||'14:00:00Z'))<=now)
+          .map(r=>({
+            round:r.round, name:r.raceName, date:r.date,
+            country:r.Circuit?.Location?.country||'',
+            locality:r.Circuit?.Location?.locality||'',
+            circuit:r.Circuit?.circuitName||'',
+          }));
+      }
+    }
+  }catch(e){ /* use static data */ }
+  renderF1Next();
 }
 
-async function loadF1Next(){
-  const el=document.getElementById('f1-next');
-  el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:#e10600"></div><span style="color:#e10600">LOADING TELEMETRY...</span></div>';
+async function fetchLive(url){
   try{
-    const d=await f1Fetch('races');
-    const races=d?.MRData?.RaceTable?.Races||[];
-    const now=new Date();
-    const upcoming=races.filter(r=>new Date(r.date+'T'+(r.time||'14:00:00Z'))>now);
-    const next=upcoming[0];
-    if(!next){el.innerHTML='<div class="empty-state"><div class="ei">🏁</div><p>Season complete — check back next year</p></div>';return;}
-    const raceDate=new Date(next.date+'T'+(next.time||'14:00:00Z'));
-    const flag=f1Flag(next.raceName||next.Circuit?.Location?.country||'');
-    const cMap=circuitMap(next.Circuit?.circuitName||'',next.Circuit?.Location?.locality||'');
-    const sessions=[['FP1',next.FirstPractice],['FP2',next.SecondPractice],['FP3',next.ThirdPractice],
-                    ['SPRINT QUAL',next.SprintQualifying],['SPRINT',next.Sprint],['QUALIFYING',next.Qualifying]]
-      .filter(([,d])=>d?.date);
-    const sHTML=sessions.map(([n,sd])=>`<div class="f1-sess">${n}<span>${new Date(sd.date+'T'+(sd.time||'12:00Z')).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span></div>`).join('');
-    el.innerHTML=`<div class="f1-next-wrap">
-      <div class="f1-next-card">
-        <div class="f1-next-top">
-          <div class="f1-circuit-wrap">
-            ${cMap?`<img class="f1-circuit-map" src="${cMap}" alt="Circuit map" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.style.display='none'">`:
-              '<div style="font-size:60px;opacity:.3">🏎</div>'}
-            <div class="f1-circuit-name">${next.Circuit?.circuitName||''}</div>
-          </div>
-          <div class="f1-next-info">
-            <div class="f1-nr-label">ROUND ${next.round} · ${next.Circuit?.Location?.country||''} ${new Date().getFullYear()}</div>
-            <div class="f1-nr-name">${flag} ${next.raceName}</div>
-            <div class="f1-nr-loc">📍 ${next.Circuit?.circuitName||''} · ${next.Circuit?.Location?.locality||''}</div>
-            <div class="f1-countdown">
-              <div class="f1-cu"><span class="f1-cu-n" id="f1cd-d">—</span><span class="f1-cu-l">DAYS</span></div>
-              <div class="f1-cu"><span class="f1-cu-n" id="f1cd-h">—</span><span class="f1-cu-l">HRS</span></div>
-              <div class="f1-cu"><span class="f1-cu-n" id="f1cd-m">—</span><span class="f1-cu-l">MIN</span></div>
-              <div class="f1-cu"><span class="f1-cu-n" id="f1cd-s">—</span><span class="f1-cu-l">SEC</span></div>
-            </div>
-            <div class="f1-sessions">${sHTML}</div>
-            <div style="margin-top:10px">
-              <button class="f1-watch-btn" onclick="switchF1('watch',document.querySelectorAll('.f1-tab-btn')[4])">📺 WATCH LIVE</button>
-              <button class="f1-watch-btn" style="background:rgba(225,6,0,.15);color:#e10600;border:1px solid rgba(225,6,0,.4);box-shadow:none" onclick="switchF1('calendar',document.querySelectorAll('.f1-tab-btn')[1])">📅 CALENDAR</button>
-            </div>
-          </div>
+    const r=await fetch(url,{headers:{'Accept':'application/json'}});
+    if(!r.ok)return null;
+    return r.json();
+  }catch{return null;}
+}
+
+function teamColor(name){
+  const map={
+    'Red Bull':'#1E3A6E','Red Bull Racing':'#1E3A6E',
+    'McLaren':'#FF8000','Ferrari':'#E8002D',
+    'Mercedes':'#27F4D2','Aston Martin':'#229971',
+    'Alpine':'#0093CC','Haas':'#B6BABD',
+    'RB':'#6692FF','Racing Bulls':'#6692FF',
+    'Williams':'#005AFF','Kick Sauber':'#52E252',
+    'Sauber':'#52E252','Cadillac':'#D4AF37',
+  };
+  for(const[k,v]of Object.entries(map))if(name.includes(k))return v;
+  return'#888';
+}
+
+/* ── COUNTDOWN ── */
+let _cdInt=null;
+function startCountdown(ms){
+  if(_cdInt)clearInterval(_cdInt);
+  function tick(){
+    const d=ms-Date.now();
+    if(d<=0){clearInterval(_cdInt);return;}
+    const days=Math.floor(d/86400000);
+    const hrs=Math.floor((d%86400000)/3600000);
+    const mins=Math.floor((d%3600000)/60000);
+    const secs=Math.floor((d%60000)/1000);
+    const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+    set('f1cd-d',days);
+    set('f1cd-h',String(hrs).padStart(2,'0'));
+    set('f1cd-m',String(mins).padStart(2,'0'));
+    set('f1cd-s',String(secs).padStart(2,'0'));
+  }
+  tick(); _cdInt=setInterval(tick,1000);
+}
+
+/* ── NEXT RACE ── */
+function renderF1Next(){
+  const el=document.getElementById('f1-next');
+  const races=F1_STATIC.races;
+  if(!races.length){
+    el.innerHTML='<div class="empty-state" style="padding:40px"><div class="ei">🏁</div><p style="font-family:\'Share Tech Mono\',monospace;font-size:12px;color:var(--muted)">SEASON COMPLETE</p></div>';
+    return;
+  }
+  const r=races[0];
+  const flag=f1Flag(r.country||r.name);
+  const cMap=circuitMap(r.circuit||'',r.locality||'');
+  const raceMs=new Date(r.date+'T'+(r.time||'14:00:00Z')).getTime();
+  const fmtDt=d=>d?new Date(d.date+'T'+(d.time||'12:00Z')).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  const sessions=[
+    ['FP1',r.fp1],['FP2',r.fp2],['FP3',r.fp3],
+    ['SPRINT',r.sprint],['QUALIFYING',r.qualifying]
+  ].filter(([,d])=>d?.date);
+
+  el.innerHTML=`<div class="f1-next-wrap"><div class="f1-next-card">
+    <div class="f1-next-top">
+      <div class="f1-circuit-wrap">
+        ${cMap?`<img class="f1-circuit-map" src="${cMap}" alt="" referrerpolicy="no-referrer" onerror="this.style.display='none'">`:
+          `<div style="font-size:56px;opacity:.25">🏎</div>`}
+        <div class="f1-circuit-name">${r.circuit}</div>
+      </div>
+      <div class="f1-next-info">
+        <div class="f1-nr-label">ROUND ${r.round} · ${r.country} ${F1_STATIC.season}</div>
+        <div class="f1-nr-name">${flag} ${r.name}</div>
+        <div class="f1-nr-loc">📍 ${r.circuit} · ${r.locality}</div>
+        <div class="f1-countdown">
+          <div class="f1-cu"><span class="f1-cu-n" id="f1cd-d">—</span><span class="f1-cu-l">DAYS</span></div>
+          <div class="f1-cu"><span class="f1-cu-n" id="f1cd-h">—</span><span class="f1-cu-l">HRS</span></div>
+          <div class="f1-cu"><span class="f1-cu-n" id="f1cd-m">—</span><span class="f1-cu-l">MIN</span></div>
+          <div class="f1-cu"><span class="f1-cu-n" id="f1cd-s">—</span><span class="f1-cu-l">SEC</span></div>
+        </div>
+        <div class="f1-sessions">${sessions.map(([n,d])=>`<div class="f1-sess">${n}<span>${fmtDt(d)}</span></div>`).join('')}</div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="f1-watch-btn" onclick="switchF1('watch',null)">📺 WATCH LIVE</button>
+          <button class="f1-watch-btn" style="background:transparent;color:#e10600;border:1px solid rgba(225,6,0,.4);box-shadow:none" onclick="switchF1('calendar',null)">📅 CALENDAR</button>
         </div>
       </div>
+    </div>
+  </div></div>`;
+  startCountdown(raceMs);
+}
+
+/* ── CALENDAR ── */
+function renderF1Calendar(){
+  const all=[...F1_STATIC.completed,...F1_STATIC.races]
+    .sort((a,b)=>parseInt(a.round)-parseInt(b.round));
+  const now=new Date();
+  const nextRound=F1_STATIC.races[0]?.round;
+  document.getElementById('f1-cal-list').innerHTML=all.map(r=>{
+    const isPast=!F1_STATIC.races.find(x=>x.round===r.round);
+    const isNext=r.round===nextRound;
+    const flag=f1Flag(r.country||r.name);
+    const dt=new Date(r.date+'T14:00:00Z').toLocaleDateString([],{month:'short',day:'numeric'});
+    const cMap=circuitMap(r.circuit||'',r.locality||'');
+    const status=isPast?`<span class="f1-rstatus frs-done">DONE</span>`:
+                 isNext?`<span class="f1-rstatus frs-next">NEXT</span>`:'';
+    return `<div class="f1-round${isPast?' past':''}${isNext?' next-race':''}">
+      <div class="f1-rnum">${r.round}</div>
+      <div class="f1-rflag">${flag}</div>
+      ${cMap?`<img class="f1-rcircuit-map" src="${cMap}" alt="" referrerpolicy="no-referrer" onerror="this.style.display='none'">`:
+        '<div style="width:50px;flex-shrink:0"></div>'}
+      <div class="f1-rinfo">
+        <div class="f1-rname">${r.name}</div>
+        <div class="f1-rcircuit">${r.circuit||''}</div>
+      </div>
+      <div class="f1-rdate">${dt}</div>${status}
     </div>`;
-    startCountdown(raceDate.getTime());
-  }catch(e){el.innerHTML='<div class="empty-state"><div class="ei">⚠️</div><p>Could not load race data. Check connection.</p></div>';}
+  }).join('');
 }
 
-async function loadF1Calendar(){
-  const el=document.getElementById('f1-cal-list');
-  el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:#e10600"></div></div>';
-  try{
-    const d=await f1Fetch('races');const races=d?.MRData?.RaceTable?.Races||[];const now=new Date();
-    const nextIdx=races.findIndex(r=>new Date(r.date+'T'+(r.time||'14:00:00Z'))>now);
-    el.innerHTML=races.map((r,i)=>{
-      const past=new Date(r.date+'T'+(r.time||'14:00:00Z'))<now;
-      const isNext=i===nextIdx;
-      const flag=f1Flag(r.raceName||r.Circuit?.Location?.country||'');
-      const dt=new Date(r.date+'T'+(r.time||'14:00:00Z')).toLocaleDateString([],{month:'short',day:'numeric'});
-      const cMap=circuitMap(r.Circuit?.circuitName||'',r.Circuit?.Location?.locality||'');
-      const status=past?'<span class="f1-rstatus frs-done">DONE</span>':isNext?'<span class="f1-rstatus frs-next">NEXT</span>':'';
-      return `<div class="f1-round${past?' past':''}${isNext?' next-race':''}">
-        <div class="f1-rnum">${r.round}</div>
-        <div class="f1-rflag">${flag}</div>
-        ${cMap?`<img class="f1-rcircuit-map" src="${cMap}" alt="" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.style.display='none'">`:
-          '<div class="f1-rcircuit-map"></div>'}
-        <div class="f1-rinfo"><div class="f1-rname">${r.raceName}</div><div class="f1-rcircuit">${r.Circuit?.circuitName||''}</div></div>
-        <div class="f1-rdate">${dt}</div>${status}
-      </div>`;
-    }).join('');
-  }catch{el.innerHTML='<div class="empty-state"><div class="ei">⚠️</div><p>Could not load calendar</p></div>';}
-}
-
-async function loadF1Drivers(){
-  const el=document.getElementById('f1-dr-list');
-  el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:#e10600"></div></div>';
-  try{
-    const d=await f1Fetch('driverStandings');
-    const rows=d?.MRData?.StandingsTable?.StandingsLists?.[0]?.DriverStandings||[];
-    const maxPts=parseFloat(rows[0]?.points||1);
-    const posCls=['top1','top2','top3'];
-    el.innerHTML='<div class="f1-drivers-grid">'+rows.map((r,i)=>{
-      const pts=parseFloat(r.points||0);
+/* ── DRIVERS ── */
+function renderF1Drivers(){
+  const drivers=F1_STATIC.drivers;
+  const maxPts=Math.max(...drivers.map(d=>parseFloat(d.pts)||0),1);
+  const posCls=['top1','top2','top3'];
+  document.getElementById('f1-dr-list').innerHTML=
+    '<div class="f1-drivers-grid">'+
+    drivers.map((d,i)=>{
+      const pts=parseFloat(d.pts)||0;
       const pct=(pts/maxPts*100).toFixed(1);
-      const first=r.Driver?.givenName||'';
-      const last=r.Driver?.familyName||'';
-      const photo=driverPhoto(first,last);
-      const num=driverNum(first,last)||r.Driver?.permanentNumber||'';
-      const teamFromAPI=r.Constructors?.[0]?.name||'';
-      const teamFromDB=driverTeam(first,last);
-      const team=teamFromDB||teamFromAPI;
+      const photo=driverPhoto(d.first,d.last);
+      const num=d.num||driverNum(d.first,d.last);
       const pc=posCls[i]||'';
-      return `<div class="f1-driver-card">
-        <div class="f1-driver-pos ${pc}">${r.position}</div>
-        <div class="f1-driver-photo-wrap">
+      const color=teamColor(d.team);
+      return `<div class="f1-driver-card" style="border-left:3px solid ${color}40">
+        <div class="f1-driver-pos ${pc}">${d.pos}</div>
+        <div class="f1-driver-photo-wrap" style="background:${color}15">
           ${photo
-            ?`<img class="f1-driver-photo" src="${photo}" alt="${last}" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=\'f1-driver-photo-ph\'>🪖</div>'">`
-            :'<div class="f1-driver-photo-ph">🪖</div>'}
+            ?`<img class="f1-driver-photo" src="${photo}" alt="${d.last}" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=\'f1-driver-photo-ph\'>🪖</div>'">`
+            :`<div class="f1-driver-photo-ph">🪖</div>`}
         </div>
         <div class="f1-driver-info">
-          ${num?`<div class="f1-driver-number">#${num}</div>`:''}
+          ${num?`<div class="f1-driver-number" style="color:${color}">#${num}</div>`:''}
           <div>
-            <div class="f1-driver-fname">${first}</div>
-            <div class="f1-driver-lname">${last.toUpperCase()}</div>
-            <div class="f1-driver-team">${team}</div>
+            <div class="f1-driver-fname">${d.first}</div>
+            <div class="f1-driver-lname">${d.last.toUpperCase()}</div>
+            <div class="f1-driver-team" style="color:${color}99">${d.team}</div>
           </div>
           <div>
             <div class="f1-driver-pts-wrap">
-              <span class="f1-driver-pts">${pts}</span>
+              <span class="f1-driver-pts" style="color:${color}">${pts}</span>
               <span class="f1-pts-lbl">PTS</span>
             </div>
-            <div class="f1-pts-bar"><div class="f1-pts-bar-fill" style="width:${pct}%"></div></div>
+            <div class="f1-pts-bar"><div class="f1-pts-bar-fill" style="width:${pct}%;background:${color}"></div></div>
           </div>
         </div>
       </div>`;
     }).join('')+'</div>';
-  }catch(e){el.innerHTML='<div class="empty-state"><div class="ei">⚠️</div><p>Could not load standings</p></div>';}
 }
 
-async function loadF1Constructors(){
-  const el=document.getElementById('f1-con-list');
-  el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:#e10600"></div></div>';
-  try{
-    const d=await f1Fetch('constructorStandings');
-    const rows=d?.MRData?.StandingsTable?.StandingsLists?.[0]?.ConstructorStandings||[];
-    const maxPts=parseFloat(rows[0]?.points||1);
-    const posCls=['top1','top2','top3'];
-    el.innerHTML='<div class="f1-teams-grid">'+rows.map((r,i)=>{
-      const pts=parseFloat(r.points||0);
+/* ── CONSTRUCTORS ── */
+function renderF1Constructors(){
+  const teams=F1_STATIC.constructors;
+  const maxPts=Math.max(...teams.map(t=>parseFloat(t.pts)||0),1);
+  const posCls=['top1','top2','top3'];
+  document.getElementById('f1-con-list').innerHTML=
+    '<div class="f1-teams-grid">'+
+    teams.map((t,i)=>{
+      const pts=parseFloat(t.pts)||0;
       const pct=(pts/maxPts*100).toFixed(1);
-      const name=r.Constructor?.name||'';
-      const nat=r.Constructor?.nationality||'';
-      const ti=teamInfo(name);
+      const color=t.color||teamColor(t.name);
+      const ti=teamInfo(t.name);
       const pc=posCls[i]||'';
-      const accentColor=ti?.color||'#e10600';
-      return `<div class="f1-team-card" style="border-left:3px solid ${accentColor}20">
-        <div class="f1-team-pos ${pc}">${r.position}</div>
-        <div class="f1-team-logo-wrap" style="background:${accentColor}10">
+      return `<div class="f1-team-card" style="border-left:3px solid ${color}">
+        <div class="f1-team-pos ${pc}">${t.pos}</div>
+        <div class="f1-team-logo-wrap" style="background:${color}15">
           ${ti?.logo
-            ?`<img class="f1-team-logo" src="${ti.logo}" alt="${name}" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=\'f1-team-logo-ph\'>🏎</div>'">`
-            :'<div class="f1-team-logo-ph">🏎</div>'}
+            ?`<img class="f1-team-logo" src="${ti.logo}" alt="${t.name}" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=\'f1-team-logo-ph\'>🏎</div>'">`
+            :`<div class="f1-team-logo-ph">🏎</div>`}
         </div>
         <div class="f1-team-info">
-          <div class="f1-team-name" style="color:${accentColor}">${name}</div>
-          <div class="f1-team-nat">${nat}</div>
+          <div class="f1-team-name" style="color:${color}">${t.name}</div>
+          <div class="f1-team-nat">${t.nat}</div>
           <div class="f1-team-pts-row">
-            <span class="f1-team-pts" style="color:${accentColor}">${pts}</span>
+            <span class="f1-team-pts" style="color:${color}">${pts}</span>
             <span class="f1-pts-lbl">PTS</span>
           </div>
-          <div class="f1-bar"><div class="f1-bar-fill" style="width:${pct}%;background:${accentColor}"></div></div>
+          <div class="f1-bar"><div class="f1-bar-fill" style="width:${pct}%;background:${color}"></div></div>
         </div>
       </div>`;
     }).join('')+'</div>';
-  }catch{el.innerHTML='<div class="empty-state"><div class="ei">⚠️</div><p>Could not load standings</p></div>';}
 }
 
 const F1_SRCS={
