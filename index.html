@@ -1718,6 +1718,12 @@ function onSrcChange(){}
 
 /* ─── PAGES ── */
 function showPage(id){
+  // Stop the embedded player (and its ad scripts/trackers) when leaving the player page
+  const leavingPlayer=document.getElementById('player-page')?.classList.contains('active');
+  if(leavingPlayer && id!=='player-page'){
+    const f=document.getElementById('pFrame');
+    if(f){f.src='about:blank';}
+  }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   window.scrollTo({top:0,behavior:'smooth'});
@@ -2511,13 +2517,24 @@ function openF1Stream(url){
 
 /* ── WIKIPEDIA IMAGE LOOKUP (drivers, teams, circuits) ── */
 const _wikiImgCache={};
+async function _wikiResolve(query){
+  // Resolve a fuzzy query to an actual Wikipedia page title (avoids 404s on summary endpoint)
+  try{
+    const r=await fetch(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=1&namespace=0&format=json&origin=*`,{cache:'no-store'});
+    if(!r.ok)return null;
+    const d=await r.json();
+    return d?.[1]?.[0]||null;
+  }catch(e){return null;}
+}
 async function wikiImg(title,altTitle){
   const key=title;
   if(_wikiImgCache[key]!==undefined)return _wikiImgCache[key];
-  const tryTitles=[title,altTitle].filter(Boolean);
-  for(const t of tryTitles){
+  const queries=[title,altTitle].filter(Boolean);
+  for(const q of queries){
     try{
-      const r=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(t.replace(/ /g,'_'))}`,{cache:'no-store'});
+      const resolved=await _wikiResolve(q);
+      if(!resolved)continue;
+      const r=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(resolved.replace(/ /g,'_'))}`,{cache:'no-store'});
       if(!r.ok)continue;
       const d=await r.json();
       const img=d.thumbnail?.source||d.originalimage?.source||null;
