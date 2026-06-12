@@ -1250,6 +1250,88 @@ header{
   .f1-action-row{flex-direction:column}
   .f1-btn-primary,.f1-btn-secondary{width:100%;justify-content:center}
 }
+
+/* ══════════════════════════════════════════════
+   F1 IMAGES — drivers, teams, circuits, news
+   ══════════════════════════════════════════════ */
+.f1-driver-photo{
+  width:42px;height:42px;border-radius:50%;object-fit:cover;
+  flex-shrink:0;background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.08);
+}
+.f1-driver-photo-ph{
+  width:42px;height:42px;border-radius:50%;flex-shrink:0;
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+}
+.f1-team-logo{
+  width:34px;height:34px;border-radius:6px;object-fit:cover;
+  flex-shrink:0;background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.08);
+}
+.f1-team-logo-ph{
+  width:34px;height:34px;border-radius:6px;flex-shrink:0;
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+}
+
+/* Circuit banner on Next Race */
+.f1-circuit-banner{
+  position:relative;width:100%;height:200px;border-radius:6px;overflow:hidden;
+  margin-bottom:24px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);
+}
+.f1-circuit-banner img{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  filter:brightness(.55) saturate(1.1);transition:opacity .4s;opacity:0;
+}
+.f1-circuit-banner img.loaded{opacity:1}
+.f1-circuit-banner-overlay{
+  position:absolute;inset:0;
+  background:linear-gradient(0deg,rgba(7,7,8,.9) 0%,transparent 60%),
+             linear-gradient(135deg,rgba(225,6,0,.15),transparent 60%);
+}
+.f1-circuit-banner-label{
+  position:absolute;bottom:14px;left:18px;
+  font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:2px;
+  color:rgba(255,255,255,.7);
+}
+
+/* Podium driver photos */
+.f1-result-card{position:relative;overflow:hidden}
+.f1-result-photo{
+  position:absolute;top:0;right:0;width:64px;height:64px;
+  border-radius:50%;object-fit:cover;opacity:.9;
+  border:2px solid rgba(255,255,255,.08);
+  transform:translate(16px,-16px);
+}
+
+/* ══ NEWS ══ */
+.f1-news-wrap{padding:24px}
+.f1-news-title{font-family:'Bebas Neue',sans-serif;font-size:26px;color:#fff;letter-spacing:2px;margin-bottom:6px}
+.f1-news-sub{font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(255,255,255,.38);letter-spacing:2px;margin-bottom:20px}
+.f1-news-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.f1-news-card{
+  display:flex;flex-direction:column;
+  background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.07);
+  border-radius:8px;overflow:hidden;text-decoration:none;color:inherit;
+  transition:var(--trans);cursor:pointer;
+}
+.f1-news-card:hover{border-color:rgba(225,6,0,0.35);transform:translateY(-3px);box-shadow:var(--shadow)}
+.f1-news-img{width:100%;aspect-ratio:16/9;object-fit:cover;background:rgba(255,255,255,0.04);display:block}
+.f1-news-body{padding:14px 16px}
+.f1-news-src{
+  font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;
+  color:var(--f1-red);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;
+}
+.f1-news-headline{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px;color:#fff;line-height:1.25;margin-bottom:6px}
+.f1-news-desc{font-family:'DM Sans',sans-serif;font-size:12px;color:rgba(255,255,255,.4);line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+@media(max-width:640px){
+  .f1-news-wrap{padding:16px}
+  .f1-news-grid{grid-template-columns:1fr}
+  .f1-circuit-banner{height:140px}
+}
 </style>
 </head>
 <body>
@@ -1365,6 +1447,7 @@ header{
     <button class="f1-tab-btn" onclick="switchF1Tab('constructors',this)">CONSTRUCTORS</button>
     <button class="f1-tab-btn" onclick="switchF1Tab('results',this)">LAST RACE</button>
     <button class="f1-tab-btn" onclick="switchF1Tab('watch',this)">WATCH</button>
+    <button class="f1-tab-btn" onclick="switchF1Tab('news',this)">NEWS</button>
   </div>
   <div class="f1-content">
     <div id="f1-next" class="f1-tab-content">
@@ -1407,6 +1490,15 @@ header{
         <div class="f1-watch-sub">SELECT A SOURCE</div>
         <div class="f1-src-grid" id="f1-src-grid"></div>
         <div class="f1-iframe-wrap" id="f1-iframe-wrap"><iframe id="f1-iframe" allowfullscreen></iframe></div>
+      </div>
+    </div>
+    <div id="f1-news" class="f1-tab-content" style="display:none">
+      <div class="f1-news-wrap">
+        <div class="f1-news-title">HOT TOPICS</div>
+        <div class="f1-news-sub">LATEST FORMULA 1 HEADLINES</div>
+        <div id="f1-news-list" class="f1-news-grid">
+          <div class="spinner-wrap"><div class="spinner" style="border-top-color:var(--f1-red)"></div></div>
+        </div>
       </div>
     </div>
   </div>
@@ -2219,6 +2311,7 @@ function renderF1Tab(tab){
   else if(tab==='constructors')_f1Constructors();
   else if(tab==='results')_f1Results();
   else if(tab==='watch')_f1Watch();
+  else if(tab==='news')_f1News();
 }
 
 function f1NextRace(){
@@ -2249,6 +2342,11 @@ function _f1Next(){
     </div>`;
   }).join('');
   el.innerHTML=`<div class="f1-next-wrap">
+    <div class="f1-circuit-banner">
+      <img id="f1-circuit-img" alt="" onerror="this.style.display='none'">
+      <div class="f1-circuit-banner-overlay"></div>
+      <div class="f1-circuit-banner-label">📍 ${race.Circuit?.circuitName||'CIRCUIT'}</div>
+    </div>
     <div class="f1-race-header">
       <div>
         <div class="f1-race-round">ROUND ${race.round} / ${f1Data.races.length} · ${f1Data.year}</div>
@@ -2269,6 +2367,7 @@ function _f1Next(){
     </div>
   </div>`;
   _f1Countdown(rDate);
+  _f1LoadCircuitBanner(race.Circuit?.circuitName||'');
 }
 
 function _f1Countdown(target){
@@ -2317,17 +2416,21 @@ function _f1Drivers(){
     const pct=Math.round((parseFloat(s.points)/max)*100);
     const tcolor=f1TeamColor(s.Constructors?.[0]?.name||'');
     const flag=f1Flag((s.Driver?.nationality||'').replace('British','Great Britain').replace('American','United States'));
-    return`<div class="f1-driver-row">
+    const fullName=`${s.Driver?.givenName||''} ${s.Driver?.familyName||''}`.trim();
+    const dKey='d'+i;
+    return`<div class="f1-driver-row" data-driver-name="${fullName}" data-driver-key="${dKey}">
       <div class="f1-pos${i<3?' top3':''}">${s.position}</div>
-      <div class="f1-driver-flag">${flag}</div>
+      <div class="f1-driver-photo-ph">${flag}</div>
+      <img class="f1-driver-photo" data-driver-img="${dKey}" alt="" style="display:none">
       <div style="flex:1">
-        <div class="f1-driver-name">${s.Driver?.givenName||''} ${s.Driver?.familyName||''}</div>
+        <div class="f1-driver-name">${fullName}</div>
         <div class="f1-team" style="color:${tcolor}">${s.Constructors?.[0]?.name||''}</div>
         <div class="f1-bar"><div class="f1-bar-fill" style="width:${pct}%;background:${tcolor}"></div></div>
       </div>
       <div class="f1-pts">${s.points}<span class="f1-pts-lbl">PTS</span></div>
     </div>`;
   }).join('');
+  _f1LoadDriverPhotos();
 }
 
 function _f1Constructors(){
@@ -2336,16 +2439,21 @@ function _f1Constructors(){
   el.innerHTML=f1Data.constructorStandings.map((s,i)=>{
     const pct=Math.round((parseFloat(s.points)/max)*100);
     const tcolor=f1TeamColor(s.Constructor?.name||'');
-    return`<div class="f1-driver-row">
+    const name=s.Constructor?.name||'';
+    const tKey='c'+i;
+    return`<div class="f1-driver-row" data-team-name="${name}" data-team-key="${tKey}">
       <div class="f1-pos${i<3?' top3':''}">${s.position}</div>
+      <div class="f1-team-logo-ph">🏎</div>
+      <img class="f1-team-logo" data-team-img="${tKey}" alt="" style="display:none">
       <div style="flex:1">
-        <div class="f1-driver-name">${s.Constructor?.name||''}</div>
+        <div class="f1-driver-name">${name}</div>
         <div class="f1-team">${s.Constructor?.nationality||''}</div>
         <div class="f1-bar"><div class="f1-bar-fill" style="width:${pct}%;background:${tcolor}"></div></div>
       </div>
       <div class="f1-pts">${s.points}<span class="f1-pts-lbl">PTS</span></div>
     </div>`;
   }).join('');
+  _f1LoadTeamLogos();
 }
 
 function _f1Results(){
@@ -2355,12 +2463,17 @@ function _f1Results(){
   const nl=document.getElementById('f1-last-race-name');
   if(nl)nl.textContent=race.raceName||'';
   const results=race.Results||[];
-  const podium=results.slice(0,3).map((r,i)=>`<div class="f1-result-card">
+  const podium=results.slice(0,3).map((r,i)=>{
+    const fullName=`${r.Driver?.givenName||''} ${r.Driver?.familyName||''}`.trim();
+    const pKey='p'+i;
+    return`<div class="f1-result-card" data-driver-name="${fullName}" data-driver-key="${pKey}">
+    <img class="f1-result-photo" data-driver-img="${pKey}" alt="" style="display:none">
     <div class="f1-result-pos ${['p1','p2','p3'][i]}">${['1ST','2ND','3RD'][i]}</div>
-    <div class="f1-result-driver">${r.Driver?.givenName} ${r.Driver?.familyName}</div>
+    <div class="f1-result-driver">${fullName}</div>
     <div class="f1-result-team">${r.Constructor?.name||''}</div>
     <div class="f1-result-time">${r.Time?.time||r.status||''}</div>
-  </div>`).join('');
+  </div>`;
+  }).join('');
   const rows=results.map(r=>`<div class="f1-driver-row">
     <div class="f1-pos${parseInt(r.position)<4?' top3':''}">${r.position}</div>
     <div style="flex:1">
@@ -2373,6 +2486,7 @@ function _f1Results(){
     </div>
   </div>`).join('');
   el.innerHTML=`<div class="f1-results-row">${podium}</div><div style="margin-top:18px">${rows}</div>`;
+  _f1LoadDriverPhotos();
 }
 
 function _f1Watch(){
@@ -2393,6 +2507,103 @@ function openF1Stream(url){
     iframe.src=url;wrap.style.display='';
     setTimeout(()=>wrap.scrollIntoView({behavior:'smooth'}),100);
   } else window.open(url,'_blank');
+}
+
+/* ── WIKIPEDIA IMAGE LOOKUP (drivers, teams, circuits) ── */
+const _wikiImgCache={};
+async function wikiImg(title,altTitle){
+  const key=title;
+  if(_wikiImgCache[key]!==undefined)return _wikiImgCache[key];
+  const tryTitles=[title,altTitle].filter(Boolean);
+  for(const t of tryTitles){
+    try{
+      const r=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(t.replace(/ /g,'_'))}`,{cache:'no-store'});
+      if(!r.ok)continue;
+      const d=await r.json();
+      const img=d.thumbnail?.source||d.originalimage?.source||null;
+      if(img){_wikiImgCache[key]=img;return img;}
+    }catch(e){}
+  }
+  _wikiImgCache[key]=null;return null;
+}
+function _f1SetImg(selector,src,phClass){
+  if(!src)return;
+  document.querySelectorAll(selector).forEach(el=>{
+    const img=new Image();
+    img.onload=()=>{
+      el.src=src;el.classList.add('loaded');
+      const ph=el.parentElement?.querySelector('.'+phClass);
+      if(ph)ph.style.display='none';
+      el.style.display='';
+    };
+    img.src=src;
+  });
+}
+async function _f1LoadDriverPhotos(){
+  const rows=document.querySelectorAll('[data-driver-name]');
+  for(const row of rows){
+    const name=row.dataset.driverName;
+    const img=await wikiImg(name+' (racing driver)',name+' Formula One');
+    if(img)_f1SetImg(`img[data-driver-img="${row.dataset.driverKey}"]`,img,'f1-driver-photo-ph');
+  }
+}
+async function _f1LoadTeamLogos(){
+  const rows=document.querySelectorAll('[data-team-name]');
+  for(const row of rows){
+    const name=row.dataset.teamName;
+    const img=await wikiImg(name,name+' F1 team');
+    if(img)_f1SetImg(`img[data-team-img="${row.dataset.teamKey}"]`,img,'f1-team-logo-ph');
+  }
+}
+async function _f1LoadCircuitBanner(circuitName){
+  const img=await wikiImg(circuitName,circuitName+' circuit');
+  if(img)_f1SetImg('#f1-circuit-img',img,'f1-circuit-ph-none');
+}
+
+/* ── HOT TOPICS NEWS ── */
+const F1_NEWS_FEEDS=[
+  'https://www.autosport.com/rss/f1/news/',
+  'https://www.motorsport.com/rss/f1/news/',
+  'https://www.formula1.com/en/latest/all.xml',
+];
+let f1NewsLoaded=false;
+async function _f1News(){
+  const el=document.getElementById('f1-news-list');
+  if(!el)return;
+  if(f1NewsLoaded)return;
+  el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:var(--f1-red)"></div></div>';
+  let items=[];
+  for(const feed of F1_NEWS_FEEDS){
+    try{
+      const r=await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed)}&_=${Date.now()}`,{cache:'no-store'});
+      const d=await r.json();
+      if(d.status==='ok'&&Array.isArray(d.items)){
+        const src=(d.feed?.title||'').replace(/\.com.*$/i,'').trim()||new URL(feed).hostname.replace('www.','');
+        items=items.concat(d.items.map(it=>({...it,_source:src})));
+      }
+    }catch(e){}
+  }
+  if(!items.length){
+    el.innerHTML='<div class="spinner-wrap" style="color:rgba(255,255,255,.3)">Unable to load news right now.</div>';
+    return;
+  }
+  items.sort((a,b)=>new Date(b.pubDate)-new Date(a.pubDate));
+  items=items.slice(0,18);
+  f1NewsLoaded=true;
+  el.innerHTML=items.map(it=>{
+    const img=it.thumbnail||it.enclosure?.link||'';
+    const desc=(it.description||it.content||'').replace(/<[^>]+>/g,'').slice(0,160);
+    const date=new Date(it.pubDate);
+    const dateStr=isNaN(date)?'':date.toLocaleDateString('en',{month:'short',day:'numeric'});
+    return`<a class="f1-news-card" href="${it.link}" target="_blank" rel="noopener">
+      ${img?`<img class="f1-news-img" src="${img}" loading="lazy" onerror="this.remove()">`:''}
+      <div class="f1-news-body">
+        <div class="f1-news-src"><span>${it._source.toUpperCase()}</span><span>${dateStr}</span></div>
+        <div class="f1-news-headline">${it.title}</div>
+        <div class="f1-news-desc">${desc}</div>
+      </div>
+    </a>`;
+  }).join('');
 }
 </script>
 </body>
