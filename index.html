@@ -330,6 +330,11 @@ header{position:fixed;top:0;left:0;right:0;z-index:200;height:var(--hh);
 .sport-h-title{font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:3px;color:var(--cream)}
 .sport-h-sub{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:1px}
 .sport-filters{display:flex;gap:5px;overflow-x:auto;padding:12px 20px 0;scrollbar-width:none}
+.sport-subfilters{display:flex;gap:5px;align-items:center;overflow-x:auto;padding:8px 20px 0;scrollbar-width:none;animation:fadeUp .2s}
+.sport-subfilters::-webkit-scrollbar{display:none}
+.sub-lbl{font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(225,6,0,.55);letter-spacing:2px;flex-shrink:0;margin-right:2px}
+.sf-btn.sub{border-color:rgba(225,6,0,.18);font-size:13px}
+.sf-btn.sub.active{background:rgba(225,6,0,.12);border-color:rgba(225,6,0,.5);color:#ff6b5e}
 .sport-filters::-webkit-scrollbar{display:none}
 .sf-btn{background:transparent;border:1px solid rgba(200,168,75,.18);color:var(--muted);
   padding:4px 11px;font-family:'VT323',monospace;font-size:14px;cursor:pointer;
@@ -1409,14 +1414,28 @@ header{
   </div>
   <div class="sport-filters">
     <button class="sf-btn active" onclick="filterSport('all',this)">ALL SPORTS</button>
+    <button class="sf-btn" onclick="filterSport('football',this)">⚽ FOOTBALL</button>
+    <button class="sf-btn" onclick="setTab('f1',qTab('f1'))">🏎 F1</button>
+    <button class="sf-btn" onclick="filterSport('motorsport',this)">🏁 MOTORSPORT</button>
+    <button class="sf-btn" onclick="filterSport('cricket',this)">🏏 CRICKET</button>
     <button class="sf-btn" onclick="filterSport('basketball',this)">🏀 BASKETBALL</button>
     <button class="sf-btn" onclick="filterSport('american-football',this)">🏈 NFL</button>
     <button class="sf-btn" onclick="filterSport('hockey',this)">🏒 HOCKEY</button>
     <button class="sf-btn" onclick="filterSport('baseball',this)">⚾ BASEBALL</button>
     <button class="sf-btn" onclick="filterSport('tennis',this)">🎾 TENNIS</button>
     <button class="sf-btn" onclick="filterSport('mma',this)">🥊 MMA</button>
-    <button class="sf-btn" onclick="filterSport('motorsport',this)">🏎 MOTORSPORT</button>
-    <button class="sf-btn" onclick="filterSport('cricket',this)">🏏 CRICKET</button>
+    <button class="sf-btn" onclick="filterSport('rugby',this)">🏉 RUGBY</button>
+  </div>
+  <div class="sport-subfilters" id="motorsportSub" style="display:none">
+    <span class="sub-lbl">MOTORSPORT:</span>
+    <button class="sf-btn sub" onclick="filterSport('motorsport',this)">🏁 ALL</button>
+    <button class="sf-btn sub" onclick="filterSport('formula-1',this)">🏎 F1</button>
+    <button class="sf-btn sub" onclick="filterSport('motogp',this)">🏍 MOTOGP</button>
+    <button class="sf-btn sub" onclick="filterSport('nascar',this)">🏁 NASCAR</button>
+    <button class="sf-btn sub" onclick="filterSport('indycar',this)">🏎 INDYCAR</button>
+    <button class="sf-btn sub" onclick="filterSport('wec',this)">🏎 WEC</button>
+    <button class="sf-btn sub" onclick="filterSport('rally',this)">🚗 RALLY/WRC</button>
+    <button class="sf-btn sub" onclick="filterSport('formula-e',this)">⚡ FORMULA E</button>
   </div>
   <div id="sports-content" style="padding:12px 0">
     <div class="spinner-wrap"><div class="spinner" style="border-top-color:#22c55e"></div><span>TUNING IN...</span></div>
@@ -2034,20 +2053,50 @@ async function loadSports(cat='all'){
   try{const m=await fetchMatches(cat);allMatches=Array.isArray(m)?m:[];renderSports(allMatches);}
   catch{el.innerHTML='<div class="empty-state"><div class="ei">📡</div><p>NO SIGNAL</p></div>';}
 }
+const MOTOR_CATS=['motorsport','formula-1','f1','motogp','nascar','indycar','wec','rally','wrc','formula-e'];
 function filterSport(cat,el){
   document.querySelectorAll('.sf-btn').forEach(b=>b.classList.remove('active'));
-  if(el)el.classList.add('active');loadSports(cat);
+  if(el)el.classList.add('active');
+  const sub=document.getElementById('motorsportSub');
+  if(sub){
+    const showSub=MOTOR_CATS.includes(cat);
+    sub.style.display=showSub?'flex':'none';
+    if(showSub){
+      // also mark the matching sub-button active (in case main MOTORSPORT btn was clicked)
+      sub.querySelectorAll('.sf-btn.sub').forEach(b=>b.classList.remove('active'));
+      const match=[...sub.querySelectorAll('.sf-btn.sub')].find(b=>b.getAttribute('onclick')?.includes(`'${cat}'`));
+      if(match)match.classList.add('active');
+      else if(cat==='motorsport')sub.querySelector('.sf-btn.sub')?.classList.add('active');
+    }
+  }
+  loadSports(cat);
 }
-const SICONS={football:'⚽',basketball:'🏀','american-football':'🏈',hockey:'🏒',baseball:'⚾',tennis:'🎾',mma:'🥊',boxing:'🥊',motorsport:'🏎',cricket:'🏏',rugby:'🏉',golf:'⛳',default:'🏟'};
+const SICONS={football:'⚽',soccer:'⚽',basketball:'🏀','american-football':'🏈',hockey:'🏒',baseball:'⚾',tennis:'🎾',mma:'🥊',boxing:'🥊',
+  motorsport:'🏁','formula-1':'🏎',f1:'🏎',motogp:'🏍',nascar:'🏁',indycar:'🏎',wec:'🏎',rally:'🚗',wrc:'🚗','formula-e':'⚡',
+  cricket:'🏏',rugby:'🏉',golf:'⛳',afl:'🏉',darts:'🎯',default:'🏟'};
+// Normalize API category aliases so related sports group together correctly
+const CAT_ALIASES={
+  soccer:'football','football-soccer':'football',
+  fight:'mma','combat-sports':'mma',
+  'motor-sports':'motorsport',motorsports:'motorsport','motor-sport':'motorsport',
+  f1:'motorsport','formula-1':'motorsport',formula1:'motorsport',
+  motogp:'motorsport',nascar:'motorsport',indycar:'motorsport',
+  wec:'motorsport',rally:'motorsport',wrc:'motorsport','formula-e':'motorsport',
+};
+function normCat(c){
+  const k=(c||'').toLowerCase().replace(/\s+/g,'-');
+  return CAT_ALIASES[k]||k;
+}
 function sportIcon(c){return SICONS[c?.toLowerCase().replace(/\s+/g,'-')]||SICONS.default;}
 function fmtTime(ts){if(!ts)return'';const d=new Date(typeof ts==='string'?ts:ts);if(isNaN(d))return'';return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+' · '+d.toLocaleDateString([],{month:'short',day:'numeric'});}
 function sportCardHTML(m){
-  const icon=sportIcon(m.category||'');
+  const ncat=normCat(m.category);
+  const icon=sportIcon(ncat);
   const home=m.teams?.home?.name||'',away=m.teams?.away?.name||'';
   const title=m.title||(home&&away?`${home} vs ${away}`:'Live Match');
   const isLive=m.popular||m.isLive||(m.date&&Math.abs(Date.now()-new Date(m.date))<4*3600000);
-  return `<div class="sport-card" data-m='${JSON.stringify({id:m.id,title,category:m.category,sources:m.sources,date:m.date,teams:m.teams}).replace(/'/g,"&#39;")}' style="position:relative">
-    <div class="sport-thumb-ph">${icon?`<span style="font-size:32px">${icon}</span>`:''}<span style="font-family:'VT323',monospace;font-size:11px;color:var(--muted)">${(m.category||'SPORT').toUpperCase()}</span></div>
+  return `<div class="sport-card" data-m='${JSON.stringify({id:m.id,title,category:ncat,sources:m.sources,date:m.date,teams:m.teams}).replace(/'/g,"&#39;")}' style="position:relative">
+    <div class="sport-thumb-ph">${icon?`<span style="font-size:32px">${icon}</span>`:''}<span style="font-family:'VT323',monospace;font-size:11px;color:var(--muted)">${(ncat||'SPORT').toUpperCase()}</span></div>
     ${isLive?`<div class="slive"><span class="sldot"></span>LIVE</div>`:''}
     <div class="sport-info">
       <div class="sport-ttl">${title.toUpperCase()}</div>
@@ -2062,7 +2111,7 @@ function renderSports(matches){
   if(!matches.length){el.innerHTML='<div class="empty-state"><div class="ei">📡</div><p>NO LIVE MATCHES RIGHT NOW</p></div>';if(lc)lc.textContent='';return;}
   const liveN=matches.filter(m=>m.popular||m.isLive).length;
   if(lc)lc.textContent=liveN>0?`${liveN} LIVE NOW`:`${matches.length} MATCHES`;
-  const groups={};matches.forEach(m=>{const c=m.category||'Other';if(!groups[c])groups[c]=[];groups[c].push(m);});
+  const groups={};matches.forEach(m=>{const c=normCat(m.category)||'other';if(!groups[c])groups[c]=[];groups[c].push(m);});
   el.innerHTML=Object.entries(groups).map(([cat,ms])=>`
     <div class="section" style="padding-bottom:4px">
       <div class="sec-head"><div class="sec-title gt">${sportIcon(cat)} ${cat.toUpperCase()}</div><span style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--muted)">${ms.length} MATCH${ms.length!==1?'ES':''}</span></div>
