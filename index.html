@@ -252,8 +252,6 @@ header{position:fixed;top:0;left:0;right:0;z-index:200;height:var(--hh);
 .player-shell{position:relative;width:100%;background:#000}
 .player-shell::before{content:'';display:block;padding-top:56.25%}
 .player-shell iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none}
-.player-shell::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:1;
-  background:repeating-linear-gradient(0deg,rgba(0,0,0,.12) 0px,rgba(0,0,0,.12) 1px,transparent 1px,transparent 2px)}
 .player-body{padding:13px 20px}
 @media(max-width:640px){.player-body{padding:10px 13px}}
 .back-btn{display:inline-flex;align-items:center;gap:5px;background:none;border:none;
@@ -1215,7 +1213,8 @@ header{
 /* STANDINGS */
 .f1-standings-wrap{padding:20px 24px}
 .f1-standings-title{font-family:'Bebas Neue',sans-serif;font-size:26px;color:#fff;letter-spacing:2px;margin-bottom:18px}
-.f1-driver-row{display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.045)}
+.f1-driver-row{display:flex;align-items:center;gap:18px;padding:16px 0;border-bottom:1px solid rgba(255,255,255,0.045)}
+.f1-snippet{font-family:'DM Sans',sans-serif;font-size:11px;color:rgba(255,255,255,.35);line-height:1.5;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:560px}
 .f1-driver-row:last-child{border-bottom:none}
 .f1-pos{font-family:'Bebas Neue',sans-serif;font-size:22px;color:rgba(255,255,255,0.2);min-width:32px;text-align:center;flex-shrink:0}
 .f1-pos.top3{color:var(--f1-red)}
@@ -1234,11 +1233,31 @@ header{
 .f1-src-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:24px}
 .f1-src-card{background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:16px;cursor:pointer;transition:var(--trans);display:flex;flex-direction:column;gap:5px}
 .f1-src-card:hover{background:rgba(225,6,0,0.07);border-color:rgba(225,6,0,0.32);transform:translateY(-3px)}
+.f1-src-card.active{background:rgba(225,6,0,0.1);border-color:var(--f1-red)}
 .f1-src-card-name{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;color:#fff}
 .f1-src-card-url{font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(255,255,255,0.32);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .f1-src-card-badge{display:inline-block;font-family:'Share Tech Mono',monospace;font-size:9px;background:rgba(225,6,0,0.16);color:var(--f1-red);padding:3px 8px;border-radius:4px;letter-spacing:1px;margin-top:5px;align-self:flex-start}
-.f1-iframe-wrap{display:none;border-radius:6px;overflow:hidden;border:1px solid rgba(225,6,0,0.3)}
-.f1-iframe-wrap iframe{width:100%;aspect-ratio:16/9;display:block;border:none}
+.f1-player-shell{
+  position:relative;width:100%;border-radius:6px;overflow:hidden;
+  border:1px solid rgba(225,6,0,0.3);background:#000;
+  aspect-ratio:16/9;
+}
+.f1-player-shell iframe{position:absolute;inset:0;width:100%;height:100%;border:none;display:block}
+.f1-player-ph{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:14px;
+  background:radial-gradient(ellipse at center,rgba(225,6,0,0.07) 0%,#070708 75%);
+}
+.f1-player-ph-icon{
+  width:64px;height:64px;border-radius:50%;
+  background:rgba(225,6,0,0.12);border:1px solid rgba(225,6,0,0.35);
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;color:var(--f1-red);
+}
+.f1-player-ph-text{
+  font-family:'Share Tech Mono',monospace;font-size:11px;
+  letter-spacing:3px;color:rgba(255,255,255,0.35);text-align:center;padding:0 20px;
+}
 
 /* RESPONSIVE */
 @media(max-width:640px){
@@ -1260,24 +1279,24 @@ header{
    F1 IMAGES — drivers, teams, circuits, news
    ══════════════════════════════════════════════ */
 .f1-driver-photo{
-  width:60px;height:60px;border-radius:50%;object-fit:cover;
+  width:88px;height:88px;border-radius:8px;object-fit:cover;
   flex-shrink:0;background:rgba(255,255,255,0.05);
   border:2px solid rgba(255,255,255,0.08);
 }
 .f1-driver-photo-ph{
-  width:60px;height:60px;border-radius:50%;flex-shrink:0;
+  width:88px;height:88px;border-radius:8px;flex-shrink:0;
   background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.08);
-  display:flex;align-items:center;justify-content:center;font-size:24px;
+  display:flex;align-items:center;justify-content:center;font-size:32px;
 }
 .f1-team-logo{
-  width:52px;height:52px;border-radius:10px;object-fit:cover;
+  width:88px;height:88px;border-radius:8px;object-fit:cover;
   flex-shrink:0;background:rgba(255,255,255,0.05);
   border:2px solid rgba(255,255,255,0.08);
 }
 .f1-team-logo-ph{
-  width:52px;height:52px;border-radius:10px;flex-shrink:0;
+  width:88px;height:88px;border-radius:8px;flex-shrink:0;
   background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.08);
-  display:flex;align-items:center;justify-content:center;font-size:22px;
+  display:flex;align-items:center;justify-content:center;font-size:32px;
 }
 
 /* Circuit banner on Next Race */
@@ -1506,9 +1525,16 @@ header{
     <div id="f1-watch" class="f1-tab-content" style="display:none">
       <div class="f1-watch-wrap">
         <div class="f1-watch-title">STREAM F1</div>
-        <div class="f1-watch-sub">SELECT A SOURCE</div>
+        <div class="f1-watch-sub">LIVE RACES, PRACTICE, QUALIFYING &amp; REPLAYS</div>
+        <div class="f1-player-shell" id="f1-player-shell">
+          <div class="f1-player-ph" id="f1-player-ph">
+            <div class="f1-player-ph-icon">▶</div>
+            <div class="f1-player-ph-text">SELECT A SOURCE BELOW TO START WATCHING</div>
+          </div>
+          <iframe id="f1-iframe" allowfullscreen style="display:none"></iframe>
+        </div>
+        <div class="f1-watch-sub" style="margin-top:22px">SOURCES</div>
         <div class="f1-src-grid" id="f1-src-grid"></div>
-        <div class="f1-iframe-wrap" id="f1-iframe-wrap"><iframe id="f1-iframe" allowfullscreen></iframe></div>
       </div>
     </div>
     <div id="f1-news" class="f1-tab-content" style="display:none">
@@ -2380,7 +2406,7 @@ function _f1Next(){
     <div class="f1-circuit-banner">
       <img id="f1-circuit-img" alt="" onerror="this.style.display='none'">
       <div class="f1-circuit-banner-overlay"></div>
-      <div class="f1-circuit-banner-label">📍 ${race.Circuit?.circuitName||'CIRCUIT'}</div>
+      <div class="f1-circuit-banner-label">📍 ${race.Circuit?.circuitName||'CIRCUIT'}<div class="f1-snippet" data-snippet="circuit" style="margin-top:4px;max-width:480px"></div></div>
     </div>
     <div class="f1-race-header">
       <div>
@@ -2460,6 +2486,7 @@ function _f1Drivers(){
       <div style="flex:1">
         <div class="f1-driver-name">${fullName}</div>
         <div class="f1-team" style="color:${tcolor}">${s.Constructors?.[0]?.name||''}</div>
+        <div class="f1-snippet" data-snippet="${dKey}"></div>
         <div class="f1-bar"><div class="f1-bar-fill" style="width:${pct}%;background:${tcolor}"></div></div>
       </div>
       <div class="f1-pts">${s.points}<span class="f1-pts-lbl">PTS</span></div>
@@ -2483,6 +2510,7 @@ function _f1Constructors(){
       <div style="flex:1">
         <div class="f1-driver-name">${name}</div>
         <div class="f1-team">${s.Constructor?.nationality||''}</div>
+        <div class="f1-snippet" data-snippet="${tKey}"></div>
         <div class="f1-bar"><div class="f1-bar-fill" style="width:${pct}%;background:${tcolor}"></div></div>
       </div>
       <div class="f1-pts">${s.points}<span class="f1-pts-lbl">PTS</span></div>
@@ -2526,7 +2554,7 @@ function _f1Results(){
 
 function _f1Watch(){
   const el=document.getElementById('f1-src-grid');if(!el)return;
-  el.innerHTML=F1_STREAMS.map(s=>`<div class="f1-src-card" onclick="openF1Stream('${s.url}')">
+  el.innerHTML=F1_STREAMS.map(s=>`<div class="f1-src-card" data-url="${s.url}" onclick="openF1Stream('${s.url}')">
     <div class="f1-src-card-name">${s.n}</div>
     <div class="f1-src-card-url">${s.desc}</div>
     <span class="f1-src-card-badge">${s.badge}</span>
@@ -2535,12 +2563,14 @@ function _f1Watch(){
 
 function openF1Stream(url){
   if(!url||!url.startsWith('http'))return;
-  const wrap=document.getElementById('f1-iframe-wrap');
   const iframe=document.getElementById('f1-iframe');
-  if(wrap&&iframe){
+  const ph=document.getElementById('f1-player-ph');
+  const shell=document.getElementById('f1-player-shell');
+  if(iframe&&ph){
     switchF1Tab('watch',document.querySelectorAll('.f1-tab-btn')[5]);
-    iframe.src=url;wrap.style.display='';
-    setTimeout(()=>wrap.scrollIntoView({behavior:'smooth'}),100);
+    iframe.src=url;iframe.style.display='';ph.style.display='none';
+    document.querySelectorAll('.f1-src-card').forEach(c=>c.classList.toggle('active',c.dataset.url===url));
+    setTimeout(()=>shell?.scrollIntoView({behavior:'smooth',block:'center'}),100);
   } else window.open(url,'_blank');
 }
 
@@ -2555,9 +2585,10 @@ async function _wikiResolve(query){
     return d?.[1]?.[0]||null;
   }catch(e){return null;}
 }
-async function wikiImg(title,altTitle){
+const _wikiInfoCache={};
+async function wikiInfo(title,altTitle){
   const key=title;
-  if(_wikiImgCache[key]!==undefined)return _wikiImgCache[key];
+  if(_wikiInfoCache[key]!==undefined)return _wikiInfoCache[key];
   const queries=[title,altTitle].filter(Boolean);
   for(const q of queries){
     try{
@@ -2567,10 +2598,19 @@ async function wikiImg(title,altTitle){
       if(!r.ok)continue;
       const d=await r.json();
       const img=d.thumbnail?.source||d.originalimage?.source||null;
-      if(img){_wikiImgCache[key]=img;return img;}
+      const extract=d.extract||null;
+      if(img||extract){const info={img,extract};_wikiInfoCache[key]=info;return info;}
     }catch(e){}
   }
-  _wikiImgCache[key]=null;return null;
+  _wikiInfoCache[key]=null;return null;
+}
+async function wikiImg(title,altTitle){
+  const key=title;
+  if(_wikiImgCache[key]!==undefined)return _wikiImgCache[key];
+  const info=await wikiInfo(title,altTitle);
+  const img=info?.img||null;
+  _wikiImgCache[key]=img;
+  return img;
 }
 function _f1SetImg(selector,src,phClass){
   if(!src)return;
@@ -2585,25 +2625,35 @@ function _f1SetImg(selector,src,phClass){
     img.src=src;
   });
 }
+function _f1SetSnippet(key,text){
+  if(!text)return;
+  const els=document.querySelectorAll(`[data-snippet="${key}"]`);
+  els.forEach(el=>{el.textContent=text.split('. ').slice(0,2).join('. ').slice(0,180)+(text.length>180?'…':'');});
+}
 async function _f1LoadDriverPhotos(){
   const rows=document.querySelectorAll('[data-driver-name]');
   for(const row of rows){
     const name=row.dataset.driverName;
-    const img=await wikiImg(name,name+' (racing driver)');
-    if(img)_f1SetImg(`img[data-driver-img="${row.dataset.driverKey}"]`,img,'f1-driver-photo-ph');
+    const key=row.dataset.driverKey;
+    const info=await wikiInfo(name,name+' (racing driver)');
+    if(info?.img)_f1SetImg(`img[data-driver-img="${key}"]`,info.img,'f1-driver-photo-ph');
+    if(info?.extract)_f1SetSnippet(key,info.extract);
   }
 }
 async function _f1LoadTeamLogos(){
   const rows=document.querySelectorAll('[data-team-name]');
   for(const row of rows){
     const name=row.dataset.teamName;
-    const img=await wikiImg(name,name+' F1 team');
-    if(img)_f1SetImg(`img[data-team-img="${row.dataset.teamKey}"]`,img,'f1-team-logo-ph');
+    const key=row.dataset.teamKey;
+    const info=await wikiInfo(name,name+' F1 team');
+    if(info?.img)_f1SetImg(`img[data-team-img="${key}"]`,info.img,'f1-team-logo-ph');
+    if(info?.extract)_f1SetSnippet(key,info.extract);
   }
 }
 async function _f1LoadCircuitBanner(circuitName){
-  const img=await wikiImg(circuitName,circuitName+' circuit');
-  if(img)_f1SetImg('#f1-circuit-img',img,'f1-circuit-ph-none');
+  const info=await wikiInfo(circuitName,circuitName+' circuit');
+  if(info?.img)_f1SetImg('#f1-circuit-img',info.img,'f1-circuit-ph-none');
+  if(info?.extract)_f1SetSnippet('circuit',info.extract);
 }
 
 /* ── HOT TOPICS NEWS ── */
