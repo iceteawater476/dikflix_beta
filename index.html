@@ -1231,6 +1231,17 @@ header{
 .f1-watch-title{font-family:'Bebas Neue',sans-serif;font-size:26px;color:#fff;letter-spacing:2px;margin-bottom:6px}
 .f1-watch-sub{font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(255,255,255,0.38);letter-spacing:2px;margin-bottom:20px}
 .f1-src-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:24px}
+.f1-match-group{margin-bottom:24px}
+.f1-match-group-title{
+  font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;color:#fff;
+  margin-bottom:10px;display:flex;align-items:center;gap:8px;
+}
+.f1-match-group-title::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--f1-red);animation:f1pulse 1.5s infinite;flex-shrink:0}
+.f1-watch-empty{padding:32px 16px;text-align:center}
+.f1-watch-empty-icon{font-size:36px;opacity:.3;margin-bottom:12px}
+.f1-watch-empty-text{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;color:rgba(255,255,255,.6);margin-bottom:6px}
+.f1-watch-empty-sub{font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(255,255,255,.32);letter-spacing:1px;margin-bottom:18px}
+.f1-src-card-link{text-decoration:none;display:flex;flex-direction:column;gap:5px}
 .f1-src-card{background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:16px;cursor:pointer;transition:var(--trans);display:flex;flex-direction:column;gap:5px}
 .f1-src-card:hover{background:rgba(225,6,0,0.07);border-color:rgba(225,6,0,0.32);transform:translateY(-3px)}
 .f1-src-card.active{background:rgba(225,6,0,0.1);border-color:var(--f1-red)}
@@ -1533,8 +1544,8 @@ header{
           </div>
           <iframe id="f1-iframe" allowfullscreen style="display:none"></iframe>
         </div>
-        <div class="f1-watch-sub" style="margin-top:22px">SOURCES</div>
-        <div class="f1-src-grid" id="f1-src-grid"></div>
+        <div class="f1-watch-sub" style="margin-top:22px" id="f1-src-heading">LIVE F1 STREAMS</div>
+        <div id="f1-src-grid"></div>
       </div>
     </div>
     <div id="f1-news" class="f1-tab-content" style="display:none">
@@ -2284,18 +2295,45 @@ let f1ActiveTab='next';
 let f1CountdownTimer=null;
 let f1CalFilter='all';
 
-const F1_STREAMS=[
-  {n:'VidLink',        url:'https://vidlink.pro',           badge:'FREE',  desc:'vidlink.pro'},
-  {n:'Streamed.su',    url:'https://streamed.su/sport',     badge:'LIVE',  desc:'streamed.su'},
-  {n:'SportsBay',      url:'https://www.sportsbay.club',    badge:'LIVE',  desc:'sportsbay.club'},
-  {n:'CrackStreams',   url:'https://crackstreams.dev',      badge:'FREE',  desc:'crackstreams.dev'},
-  {n:'DaddyLiveHD',    url:'https://dlhd.sx/sports',        badge:'HD',    desc:'dlhd.sx'},
-  {n:'F1 TV Pro',      url:'https://f1tv.formula1.com',     badge:'SUB',   desc:'f1tv.formula1.com'},
-  {n:'Multiviewer',    url:'https://multiviewer.app',       badge:'APP',   desc:'multiviewer.app'},
-  {n:'Pitwall',        url:'https://pitwall.app',           badge:'TIMING',desc:'pitwall.app'},
-  {n:'YouTube F1',     url:'https://www.youtube.com/c/Formula1', badge:'FREE', desc:'youtube.com/Formula1'},
+// Official/external links shown only when no live F1 stream is found via the sports feed
+const F1_FALLBACK_LINKS=[
+  {n:'F1 TV Pro',      url:'https://f1tv.formula1.com',     badge:'OFFICIAL', desc:'f1tv.formula1.com'},
+  {n:'YouTube F1',     url:'https://www.youtube.com/c/Formula1', badge:'HIGHLIGHTS', desc:'youtube.com/Formula1'},
+  {n:'Formula1.com Live', url:'https://www.formula1.com/en/f1-live', badge:'OFFICIAL', desc:'formula1.com'},
   {n:'Reddit Streams', url:'https://www.reddit.com/r/motorsportsstreams', badge:'LINKS', desc:'r/motorsportsstreams'},
 ];
+
+// Build embeddable stream sources for a live-sports match (same approach as openSportItem)
+async function _f1MatchSources(match){
+  const srcList=[];
+  if(match.sources?.length){
+    for(const src of match.sources.slice(0,2)){
+      try{
+        const streams=await fetchStreams(src.source,src.id);
+        if(Array.isArray(streams))streams.forEach(s=>{if(s.embedUrl)srcList.push({n:`${src.source.toUpperCase()} ${s.hd!==false?'HD':'SD'}`,u:s.embedUrl});});
+      }catch(e){}
+    }
+    match.sources.forEach((src,i)=>{for(let sn=1;sn<=2;sn++)srcList.push({n:`STREAM ${i*2+sn}`,u:`${WS}/embed/${src.source}/${src.id}/${sn}`});});
+  }
+  return srcList;
+}
+
+// Find live F1/motorsport matches from the sports feed
+async function _f1LiveMatches(){
+  const tryCats=['formula-1','f1','motorsport','motor-sports'];
+  let matches=[];
+  for(const cat of tryCats){
+    try{matches=await fetchMatches(cat);}catch(e){matches=[];}
+    if(matches.length)break;
+  }
+  if(!matches.length)return[];
+  const isF1=m=>{
+    const t=(m.title||'').toLowerCase(),c=(m.category||'').toLowerCase();
+    return c.includes('f1')||c.includes('formula')||t.includes('f1')||t.includes('formula 1')||t.includes('grand prix');
+  };
+  const f1ms=matches.filter(isF1);
+  return (f1ms.length?f1ms:matches).slice(0,4);
+}
 
 async function _f1j(path){
   // cache-busted fetch against the live Ergast mirror
@@ -2552,13 +2590,67 @@ function _f1Results(){
   _f1LoadDriverPhotos();
 }
 
-function _f1Watch(){
+let f1WatchLoaded=false;
+async function _f1Watch(){
   const el=document.getElementById('f1-src-grid');if(!el)return;
-  el.innerHTML=F1_STREAMS.map(s=>`<div class="f1-src-card" data-url="${s.url}" onclick="openF1Stream('${s.url}')">
-    <div class="f1-src-card-name">${s.n}</div>
-    <div class="f1-src-card-url">${s.desc}</div>
-    <span class="f1-src-card-badge">${s.badge}</span>
-  </div>`).join('');
+  if(f1WatchLoaded)return;
+  el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:var(--f1-red)"></div><span style="color:var(--f1-red);font-family:\'Share Tech Mono\',monospace;font-size:11px;letter-spacing:2px">FINDING LIVE F1 STREAMS</span></div>';
+  let matches=[];
+  try{matches=await _f1LiveMatches();}catch(e){}
+
+  const heading=document.getElementById('f1-src-heading');
+
+  if(!matches.length){
+    if(heading)heading.textContent='NO LIVE F1 SESSION RIGHT NOW';
+    el.innerHTML=`<div class="f1-watch-empty">
+      <div class="f1-watch-empty-icon">📡</div>
+      <div class="f1-watch-empty-text">NO LIVE F1 SESSION RIGHT NOW</div>
+      <div class="f1-watch-empty-sub">Check the NEXT RACE tab for the schedule — or try these official sources:</div>
+      <div class="f1-src-grid">
+        ${F1_FALLBACK_LINKS.map(s=>`<a class="f1-src-card f1-src-card-link" href="${s.url}" target="_blank" rel="noopener">
+          <div class="f1-src-card-name">${s.n}</div>
+          <div class="f1-src-card-url">${s.desc}</div>
+          <span class="f1-src-card-badge">${s.badge}</span>
+        </a>`).join('')}
+      </div>
+    </div>`;
+    f1WatchLoaded=true;
+    return;
+  }
+
+  if(heading)heading.textContent='LIVE F1 STREAMS';
+  let html='';
+  for(const m of matches){
+    const srcList=await _f1MatchSources(m);
+    if(!srcList.length)continue;
+    html+=`<div class="f1-match-group">
+      <div class="f1-match-group-title">${(m.title||'FORMULA 1').toUpperCase()}</div>
+      <div class="f1-src-grid">
+        ${srcList.map(s=>`<div class="f1-src-card" data-url="${s.u}" onclick="openF1Stream('${s.u}')">
+          <div class="f1-src-card-name">${s.n}</div>
+          <div class="f1-src-card-url">${(m.category||'F1').toUpperCase()}${fmtTime(m.date)?' · '+fmtTime(m.date):''}</div>
+          <span class="f1-src-card-badge">LIVE</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
+  if(!html){
+    el.innerHTML=`<div class="f1-watch-empty">
+      <div class="f1-watch-empty-icon">📡</div>
+      <div class="f1-watch-empty-text">NO STREAMS AVAILABLE YET</div>
+      <div class="f1-watch-empty-sub">Try these official sources instead:</div>
+      <div class="f1-src-grid">
+        ${F1_FALLBACK_LINKS.map(s=>`<a class="f1-src-card f1-src-card-link" href="${s.url}" target="_blank" rel="noopener">
+          <div class="f1-src-card-name">${s.n}</div>
+          <div class="f1-src-card-url">${s.desc}</div>
+          <span class="f1-src-card-badge">${s.badge}</span>
+        </a>`).join('')}
+      </div>
+    </div>`;
+  } else {
+    el.innerHTML=html;
+  }
+  f1WatchLoaded=true;
 }
 
 function openF1Stream(url){
