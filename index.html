@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1813,22 +1814,131 @@ header{
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 <script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script>
 /* ─── TMDB ── */
 const TK='4e44d9029b1270a757cddc766a1bcb63',TB='https://api.themoviedb.org/3',P3='https://image.tmdb.org/t/p/w300',P5='https://image.tmdb.org/t/p/w500';
 async function tmdb(p,q=''){const r=await fetch(`${TB}${p}?api_key=${TK}&language=en-US&${q}`);return r.json();}
-/* ─── SPORTS APIs ── */
-const WS='https://westream.su',SR='https://api.sportsrc.org';
+/* ─── SPORTS API (streamed.pk) ── */
+const SP='https://streamed.pk';
+
+async function spFetch(path){
+  const r=await fetch(`${SP}${path}`);
+  if(!r.ok)throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// Map our internal filter names to streamed.pk sport slugs
+const SP_SPORT_MAP={
+  'all':null,
+  'football':'football',
+  'soccer':'football',
+  'basketball':'basketball',
+  'american-football':'american-football',
+  'hockey':'hockey',
+  'baseball':'baseball',
+  'tennis':'tennis',
+  'mma':'fight',
+  'boxing':'fight',
+  'motorsport':'motor-sports',
+  'formula-1':'motor-sports',
+  'f1':'motor-sports',
+  'motogp':'motor-sports',
+  'nascar':'motor-sports',
+  'indycar':'motor-sports',
+  'wec':'motor-sports',
+  'rally':'motor-sports',
+  'wrc':'motor-sports',
+  'formula-e':'motor-sports',
+  'cricket':'cricket',
+  'rugby':'rugby',
+  'golf':'golf',
+};
+
+// Normalize streamed.pk match to internal format
+function normStreamedMatch(m){
+  return {
+    id: m.id,
+    title: m.title || (m.teams?.home?.name&&m.teams?.away?.name ? `${m.teams.home.name} vs ${m.teams.away.name}` : 'Live Match'),
+    category: m.category || 'sport',
+    popular: m.popular || false,
+    isLive: m.status==='live' || m.popular || false,
+    date: m.date,
+    teams: m.teams || null,
+    sources: m.sources || [],
+    poster: m.poster,
+  };
+}
+
 async function fetchMatches(cat='all'){
   try{
-    const u=cat==='all'?`${WS}/matches/live`:`${WS}/matches/${encodeURIComponent(cat)}`;
-    const r=await fetch(u);if(!r.ok)throw 0;return await r.json();
-  }catch{
-    try{const r=await fetch(`${SR}/?data=matches&category=${cat}`);const d=await r.json();return Array.isArray(d)?d:[];}
-    catch{return[];}
+    let raw=[];
+    const spCat=SP_SPORT_MAP[cat]||null;
+    if(cat==='all'){
+      // Fetch live + popular together for richer results
+      const[live,pop]=await Promise.allSettled([
+        spFetch('/api/matches/live'),
+        spFetch('/api/matches/all/popular'),
+      ]);
+      const liveData=live.status==='fulfilled'&&Array.isArray(live.value)?live.value:[];
+      const popData=pop.status==='fulfilled'&&Array.isArray(pop.value)?pop.value:[];
+      // Merge, deduplicate by id
+      const seen=new Set();
+      [...liveData,...popData].forEach(m=>{if(!seen.has(m.id)){seen.add(m.id);raw.push(m);}});
+    } else if(spCat){
+      const[bySport,byPop]=await Promise.allSettled([
+        spFetch(`/api/matches/${spCat}`),
+        spFetch(`/api/matches/${spCat}/popular`),
+      ]);
+      const a=bySport.status==='fulfilled'&&Array.isArray(bySport.value)?bySport.value:[];
+      const b=byPop.status==='fulfilled'&&Array.isArray(byPop.value)?byPop.value:[];
+      const seen=new Set();
+      [...a,...b].forEach(m=>{if(!seen.has(m.id)){seen.add(m.id);raw.push(m);}});
+    } else {
+      raw=await spFetch('/api/matches/all');
+    }
+    return raw.map(normStreamedMatch);
+  }catch(err){
+    console.warn('Sports API error:',err);
+    return[];
   }
 }
-async function fetchStreams(src,id){
-  try{const r=await fetch(`${WS}/stream/${src}/${id}`);if(!r.ok)throw 0;return await r.json();}catch{return[];}
+
+async function fetchStreams(source, sourceId){
+  try{
+    const r=await fetch(`${SP}/api/stream/${source}/${sourceId}`);
+    if(!r.ok)return[];
+    const streams=await r.json();
+    return Array.isArray(streams)?streams:[];
+  }catch{return[];}
+}
+
+function spBadgeUrl(badgeId){
+  if(!badgeId)return null;
+  const clean=badgeId.replace(/\.(webp|png|jpg|jpeg)$/i,'');
+  return `${SP}/api/images/badge/${clean}.webp`;
+}
+
+function spPosterUrl(m){
+  if(m.poster){
+    if(m.poster.startsWith('http')){
+      return `${SP}/api/images/proxy/${encodeURIComponent(m.poster)}.webp`;
+    }
+    if(m.poster.startsWith('/')){
+      return `${SP}${m.poster}`;
+    }
+    if(m.poster.length>30&&!m.poster.includes('/')){
+      return `${SP}/api/images/proxy/${m.poster}.webp`;
+    }
+    return `${SP}/api/images/poster/${m.poster}.webp`;
+  }
+  const hb=m.teams?.home?.badge,ab=m.teams?.away?.badge;
+  if(hb&&ab){
+    const ch=hb.replace(/\.(webp|png|jpg|jpeg)$/i,'');
+    const ca=ab.replace(/\.(webp|png|jpg|jpeg)$/i,'');
+    return `${SP}/api/images/poster/${ch}/${ca}.webp`;
+  }
+  return null;
 }
 
 /* ─── STATE ── */
@@ -2023,1083 +2133,7 @@ function vhsHTML(item,type,anime){
   const year=(item.release_date||item.first_air_date||'').split('-')[0];
   const rat=item.vote_average?item.vote_average.toFixed(1):'—';
   const poster=item.poster_path?`${P3}${item.poster_path}`:'';
-  const tl=anime?'ANIME':type==='movie'?'MOVIE':'TV';
-  const tc=anime?'vt-anime':type==='movie'?'vt-movie':'vt-tv';
-  return `<div class="vhs-wrap" data-id="${item.id}" data-type="${type}" data-anime="${anime?1:0}">
-    <div class="vhs-box"><div class="vhs-front">
-      ${poster?`<img class="vhs-poster" src="${poster}" alt="" loading="lazy" onerror="this.style.display='none';this.nextSibling.style.removeProperty('display')">`:''}
-      <div class="vhs-ph" style="${poster?'display:none':''}">📼<span style="font-size:9px;text-align:center">${title.slice(0,18)}</span></div>
-      <div class="vhs-rat">★${rat}</div>
-      <div class="vhs-typ ${tc}">${tl}</div>
-      <div class="vhs-label"><div class="vhs-label-t">${title.toUpperCase()}</div></div>
-    </div></div></div>`;
-}
-
-/* ─── LIVE TV ── */
-
-
-
-
-
-
-
-
-
-
-
-
-// Close on Escape
-document.addEventListener('keydown', e=>{
-  if(e.key==='Escape' && document.getElementById('livetv-player').classList.contains('active'))
-    closeLiveTV();
-});
-
-/* ─── SEARCH ── */
-async function doSearch(q){
-  q=q||document.getElementById('searchInput').value.trim();if(!q)return;
-  closeSug();prevPage='home-page';showPage('search-page');
-  document.getElementById('searchQLabel').textContent=`"${q}"`;
-  const res=document.getElementById('searchResults');
-  res.innerHTML=`<div class="spinner-wrap" style="grid-column:1/-1">${spin()}</div>`;
-  document.querySelectorAll('.f-tab').forEach(t=>t.classList.toggle('active',t.textContent==='ALL'));
-  const ak=/anime|isekai|shonen|naruto|one piece|demon slayer|jujutsu|bleach|fullmetal|attack on titan|my hero|haikyuu|chainsaw|mob psycho/i.test(q);
-  const[mv,tv]=await Promise.all([tmdb('/search/movie',`query=${encodeURIComponent(q)}`),tmdb('/search/tv',`query=${encodeURIComponent(q)}`)]);
-  allResults=[
-    ...mv.results.map(r=>({...r,_t:'movie',_a:ak&&!!r.genre_ids?.includes(16)})),
-    ...tv.results.map(r=>({...r,_t:'tv',_a:!!r.genre_ids?.includes(16)&&(!!r.origin_country?.includes('JP')||ak)}))
-  ].sort((a,b)=>b.popularity-a.popularity);
-  renderResults(allResults);
-}
-function renderResults(items){
-  const res=document.getElementById('searchResults');
-  if(!items.length){res.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="ei">🔍</div><p>No results</p></div>';return;}
-  res.innerHTML=items.slice(0,40).map(i=>vhsHTML(i,i._t,i._a)).join('');
-  res.querySelectorAll('.vhs-wrap').forEach(c=>{
-    const item=items.find(x=>x.id===parseInt(c.dataset.id));
-    c.addEventListener('click',()=>openItem(item,c.dataset.type,c.dataset.anime==='1'));
-  });
-}
-function applyFilter(type,el){
-  document.querySelectorAll('.f-tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
-  const f=type==='all'?allResults:type==='anime'?allResults.filter(r=>r._a):allResults.filter(r=>r._t===type&&!r._a);
-  renderResults(f);
-}
-
-/* ─── SUGGESTIONS ── */
-function onSearchInput(v){clearTimeout(sugTO);if(!v.trim()){closeSug();return;}sugTO=setTimeout(()=>fetchSug(v.trim()),260);}
-async function fetchSug(q){
-  try{
-    const[mv,tv]=await Promise.all([tmdb('/search/movie',`query=${encodeURIComponent(q)}&page=1`),tmdb('/search/tv',`query=${encodeURIComponent(q)}&page=1`)]);
-    sugRes=[...mv.results.slice(0,4).map(r=>({...r,_t:'movie',_a:false})),...tv.results.slice(0,4).map(r=>({...r,_t:'tv',_a:!!r.genre_ids?.includes(16)&&!!r.origin_country?.includes('JP')}))]
-      .sort((a,b)=>b.popularity-a.popularity).slice(0,7);
-    sugIdx=-1;renderSug();
-  }catch{}
-}
-function renderSug(){
-  const box=document.getElementById('sugBox');if(!sugRes.length){closeSug();return;}
-  box.innerHTML=sugRes.map((item,i)=>{
-    const title=item.title||item.name||'?';
-    const year=(item.release_date||item.first_air_date||'').split('-')[0];
-    const poster=item.poster_path?`${P3}${item.poster_path}`:'';
-    const tl=item._a?'ANIME':item._t==='movie'?'MOVIE':'TV';
-    const tc=item._a?'st-anime':item._t==='movie'?'st-movie':'st-tv';
-    const rat=item.vote_average?item.vote_average.toFixed(1):'';
-    return `<div class="sug-item" data-i="${i}">
-      ${poster?`<img class="sug-poster" src="${poster}" onerror="this.style.display='none'">`:'<div class="sug-poster"></div>'}
-      <div style="flex:1;min-width:0"><div class="sug-title">${title}</div><div class="sug-meta">${[year,rat?'★'+rat:''].filter(Boolean).join(' · ')}</div></div>
-      <span class="sug-type ${tc}">${tl}</span>
-    </div>`;
-  }).join('');
-  box.querySelectorAll('.sug-item').forEach((el,i)=>{
-    el.addEventListener('click',()=>{
-      const it=sugRes[i];document.getElementById('searchInput').value=it.title||it.name||'';
-      closeSug();openItem(it,it._t,it._a);
-    });
-  });
-  box.classList.add('open');
-}
-function openSug(){if(sugRes.length)document.getElementById('sugBox').classList.add('open');}
-function closeSug(){document.getElementById('sugBox').classList.remove('open');sugIdx=-1;}
-function handleSearchKey(e){
-  const items=document.getElementById('sugBox').querySelectorAll('.sug-item');
-  if(e.key==='ArrowDown'){e.preventDefault();sugIdx=Math.min(sugIdx+1,items.length-1);hilSug(items);}
-  else if(e.key==='ArrowUp'){e.preventDefault();sugIdx=Math.max(sugIdx-1,-1);hilSug(items);}
-  else if(e.key==='Enter'){
-    if(sugIdx>=0&&sugRes[sugIdx]){const it=sugRes[sugIdx];document.getElementById('searchInput').value=it.title||it.name||'';closeSug();openItem(it,it._t,it._a);}
-    else doSearch();
-  }else if(e.key==='Escape')closeSug();
-}
-function hilSug(items){
-  items.forEach((el,i)=>el.classList.toggle('sel',i===sugIdx));
-  if(sugIdx>=0&&sugRes[sugIdx])document.getElementById('searchInput').value=sugRes[sugIdx].title||sugRes[sugIdx].name||'';
-}
-document.addEventListener('click',e=>{if(!e.target.closest('.search-wrap'))closeSug();});
-
-/* ─── OPEN MEDIA ITEM ── */
-async function openItem(item,type,anime){
-  if(!item)return;
-  prevPage=document.querySelector('.page.active').id;
-  isAnime=!!anime;dubMode=false;malId=null;curType=type;
-  showPage('player-page');
-  document.getElementById('pTitle').textContent='LOADING...';
-  document.getElementById('pPills').innerHTML='';
-  document.getElementById('pOverview').textContent='';
-  document.getElementById('tvCtrl').style.display='none';
-  document.getElementById('dubRow').style.display='none';
-  document.getElementById('pFrame').src='';
-  try{
-    const[detail,extIds]=await Promise.all([
-      type==='movie'?tmdb(`/movie/${item.id}`):tmdb(`/tv/${item.id}`,'append_to_response=seasons'),
-      anime&&type==='tv'?tmdb(`/tv/${item.id}/external_ids`):Promise.resolve(null)
-    ]);
-    curItem=detail;if(extIds?.mal_id)malId=extIds.mal_id;
-    renderPlayer(detail,type,anime);
-  }catch{curItem=item;renderPlayer(item,type,anime);}
-}
-function renderPlayer(item,type,anime){
-  const title=item.title||item.name||'?';
-  const year=(item.release_date||item.first_air_date||'').split('-')[0];
-  const rat=item.vote_average?item.vote_average.toFixed(1):null;
-  const rt=item.runtime?`${item.runtime}m`:item.episode_run_time?.[0]?`~${item.episode_run_time[0]}m/ep`:null;
-  const genres=(item.genres||[]).slice(0,3).map(g=>g.name).join(', ');
-  document.getElementById('pTitle').textContent=title.toUpperCase();
-  const pills=document.getElementById('pPills');
-  pills.innerHTML='';
-  if(year)pills.innerHTML+=`<span class="pill">${year}</span>`;
-  if(rat) pills.innerHTML+=`<span class="pill pill-g">★${rat}</span>`;
-  if(rt)  pills.innerHTML+=`<span class="pill">${rt}</span>`;
-  if(genres)pills.innerHTML+=`<span class="pill pill-r">${genres}</span>`;
-  pills.innerHTML+=`<span class="pill">${anime?'ANIME':type==='movie'?'MOVIE':'TV SHOW'}</span>`;
-  document.getElementById('pOverview').textContent=item.overview||'';
-  if(anime){
-    document.getElementById('dubRow').style.display='flex';
-    document.getElementById('subBtn').classList.add('active');
-    document.getElementById('dubBtn').classList.remove('active');
-  }
-  if(type==='tv'){
-    tvSeasons=(item.seasons||[]).filter(s=>s.season_number>0);
-    if(tvSeasons.length){buildSeasons();document.getElementById('tvCtrl').style.display='block';}
-    else loadSources(1,1);
-  }else loadSources(1,1);
-}
-function buildSeasons(){
-  const sel=document.getElementById('seasonSel');
-  sel.innerHTML=tvSeasons.map(s=>`<option value="${s.season_number}">SEASON ${s.season_number}</option>`).join('');
-  buildPoiGrid(1,1);
-}
-function onSeasonChange(){buildPoiGrid(parseInt(document.getElementById('seasonSel').value)||1,1);}
-function buildPoiGrid(s,selEp){
-  const season=tvSeasons.find(x=>x.season_number===s);
-  const count=season?season.episode_count:24;
-  const grid=document.getElementById('poiGrid');
-  const ticks=document.getElementById('poiTicks');
-  const cursor=document.getElementById('poiCursor');
-  const eplbl=document.getElementById('epLbl');
-  grid.innerHTML=Array.from({length:count},(_,i)=>{
-    const ep=i+1;const active=ep===selEp;
-    return `<div class="ep-cell${active?' active':''}" data-ep="${ep}" data-s="${s}">
-      <div class="ep-ph">EP${String(ep).padStart(2,'0')}</div>
-      <div class="ep-num">EP${String(ep).padStart(2,'0')}</div>
-      <div class="ep-ov"><div class="ep-play">▶</div></div>
-    </div>`;
-  }).join('');
-  ticks.innerHTML=Array.from({length:count},(_,i)=>{
-    const ep=i+1;return `<span style="margin-right:${count>24?5:9}px;opacity:${ep===selEp?1:.25}">${String(ep).padStart(2,'0')}</span>`;
-  }).join('');
-  cursor.textContent=`EP${String(selEp).padStart(2,'0')}`;
-  eplbl.textContent=selEp;
-  grid.querySelectorAll('.ep-cell').forEach(cell=>{
-    cell.addEventListener('click',()=>{
-      const ep=parseInt(cell.dataset.ep);const ss=parseInt(cell.dataset.s);
-      grid.querySelectorAll('.ep-cell').forEach(c=>c.classList.remove('active'));
-      cell.classList.add('active');
-      cursor.textContent=`EP${String(ep).padStart(2,'0')}`;
-      eplbl.textContent=ep;
-      ticks.querySelectorAll('span').forEach((t,i)=>t.style.opacity=(i+1===ep)?'1':'0.25');
-      loadSources(ss,ep);saveCW(ss,ep);
-    });
-  });
-  loadSources(s,selEp);saveCW(s,selEp);
-}
-function setDubSub(mode){
-  dubMode=mode==='dub';
-  document.getElementById('subBtn').classList.toggle('active',!dubMode);
-  document.getElementById('dubBtn').classList.toggle('active',dubMode);
-  const s=parseInt(document.getElementById('seasonSel')?.value)||1;
-  const ep=document.querySelector('.ep-cell.active')?.dataset?.ep||1;
-  loadSources(s,parseInt(ep));
-  toast(dubMode?'🎙 DUB':'📜 SUB');
-}
-function loadSources(s,e){
-  curSources=buildSources(curItem,curType,s,e);
-  srcIdx=0;setSrcDropdown(curSources);
-  document.getElementById('pFrame').src=curSources[0].u;
-  saveCW(s,e);
-}
-
-/* ─── SPORTS ── */
-async function loadSports(cat='all'){
-  const el=document.getElementById('sports-content');
-  el.innerHTML=`<div class="spinner-wrap"><div class="spinner" style="border-top-color:#22c55e"></div><span>TUNING IN...</span></div>`;
-  try{const m=await fetchMatches(cat);allMatches=Array.isArray(m)?m:[];renderSports(allMatches);}
-  catch{el.innerHTML='<div class="empty-state"><div class="ei">📡</div><p>NO SIGNAL</p></div>';}
-}
-const MOTOR_CATS=['motorsport','formula-1','f1','motogp','nascar','indycar','wec','rally','wrc','formula-e'];
-function filterSport(cat,el){
-  document.querySelectorAll('.sf-btn').forEach(b=>b.classList.remove('active'));
-  if(el)el.classList.add('active');
-  const sub=document.getElementById('motorsportSub');
-  if(sub){
-    const showSub=MOTOR_CATS.includes(cat);
-    sub.style.display=showSub?'flex':'none';
-    if(showSub){
-      // also mark the matching sub-button active (in case main MOTORSPORT btn was clicked)
-      sub.querySelectorAll('.sf-btn.sub').forEach(b=>b.classList.remove('active'));
-      const match=[...sub.querySelectorAll('.sf-btn.sub')].find(b=>b.getAttribute('onclick')?.includes(`'${cat}'`));
-      if(match)match.classList.add('active');
-      else if(cat==='motorsport')sub.querySelector('.sf-btn.sub')?.classList.add('active');
-    }
-  }
-  loadSports(cat);
-}
-const SICONS={football:'⚽',soccer:'⚽',basketball:'🏀','american-football':'🏈',hockey:'🏒',baseball:'⚾',tennis:'🎾',mma:'🥊',boxing:'🥊',
-  motorsport:'🏁','formula-1':'🏎',f1:'🏎',motogp:'🏍',nascar:'🏁',indycar:'🏎',wec:'🏎',rally:'🚗',wrc:'🚗','formula-e':'⚡',
-  cricket:'🏏',rugby:'🏉',golf:'⛳',afl:'🏉',darts:'🎯',default:'🏟'};
-// Normalize API category aliases so related sports group together correctly
-const CAT_ALIASES={
-  soccer:'football','football-soccer':'football',
-  fight:'mma','combat-sports':'mma',
-  'motor-sports':'motorsport',motorsports:'motorsport','motor-sport':'motorsport',
-  f1:'motorsport','formula-1':'motorsport',formula1:'motorsport',
-  motogp:'motorsport',nascar:'motorsport',indycar:'motorsport',
-  wec:'motorsport',rally:'motorsport',wrc:'motorsport','formula-e':'motorsport',
-};
-function normCat(c){
-  const k=(c||'').toLowerCase().replace(/\s+/g,'-');
-  return CAT_ALIASES[k]||k;
-}
-function sportIcon(c){return SICONS[c?.toLowerCase().replace(/\s+/g,'-')]||SICONS.default;}
-function fmtTime(ts){if(!ts)return'';const d=new Date(typeof ts==='string'?ts:ts);if(isNaN(d))return'';return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+' · '+d.toLocaleDateString([],{month:'short',day:'numeric'});}
-function sportCardHTML(m){
-  const ncat=normCat(m.category);
-  const icon=sportIcon(ncat);
-  const home=m.teams?.home?.name||'',away=m.teams?.away?.name||'';
-  const title=m.title||(home&&away?`${home} vs ${away}`:'Live Match');
-  const isLive=m.popular||m.isLive||(m.date&&Math.abs(Date.now()-new Date(m.date))<4*3600000);
-  return `<div class="sport-card" data-m='${JSON.stringify({id:m.id,title,category:ncat,sources:m.sources,date:m.date,teams:m.teams}).replace(/'/g,"&#39;")}' style="position:relative">
-    <div class="sport-thumb-ph">${icon?`<span style="font-size:32px">${icon}</span>`:''}<span style="font-family:'VT323',monospace;font-size:11px;color:var(--muted)">${(ncat||'SPORT').toUpperCase()}</span></div>
-    ${isLive?`<div class="slive"><span class="sldot"></span>LIVE</div>`:''}
-    <div class="sport-info">
-      <div class="sport-ttl">${title.toUpperCase()}</div>
-      ${fmtTime(m.date)?`<div class="sport-time">🕐 ${fmtTime(m.date)}</div>`:''}
-      ${home&&away?`<div class="sport-teams"><div class="sport-team"><div class="sport-team-n">${home}</div></div><div class="sport-vs">VS</div><div class="sport-team"><div class="sport-team-n">${away}</div></div></div>`:''}
-    </div>
-  </div>`;
-}
-function renderSports(matches){
-  const el=document.getElementById('sports-content');
-  const lc=document.getElementById('live-count');
-  if(!matches.length){el.innerHTML='<div class="empty-state"><div class="ei">📡</div><p>NO LIVE MATCHES RIGHT NOW</p></div>';if(lc)lc.textContent='';return;}
-  const liveN=matches.filter(m=>m.popular||m.isLive).length;
-  if(lc)lc.textContent=liveN>0?`${liveN} LIVE NOW`:`${matches.length} MATCHES`;
-  const groups={};matches.forEach(m=>{const c=normCat(m.category)||'other';if(!groups[c])groups[c]=[];groups[c].push(m);});
-  el.innerHTML=Object.entries(groups).map(([cat,ms])=>`
-    <div class="section" style="padding-bottom:4px">
-      <div class="sec-head"><div class="sec-title gt">${sportIcon(cat)} ${cat.toUpperCase()}</div><span style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--muted)">${ms.length} MATCH${ms.length!==1?'ES':''}</span></div>
-      <div class="shelf" style="border:none;box-shadow:none;align-items:stretch;padding-top:0">${ms.map(sportCardHTML).join('')}</div>
-    </div>`).join('');
-  el.querySelectorAll('.sport-card').forEach(card=>{
-    card.addEventListener('click',()=>{try{openSportItem(JSON.parse(card.dataset.m.replace(/&#39;/g,"'")));}catch{}});
-  });
-}
-async function openSportItem(match){
-  prevPage='sports-page';curType='sport';
-  showPage('player-page');
-  document.getElementById('pTitle').textContent=(match.title||'LIVE MATCH').toUpperCase();
-  document.getElementById('pPills').innerHTML='';
-  document.getElementById('pOverview').textContent='';
-  document.getElementById('tvCtrl').style.display='none';
-  document.getElementById('dubRow').style.display='none';
-  document.getElementById('pFrame').src='';
-  const pills=document.getElementById('pPills');
-  pills.innerHTML=`<span class="pill pill-gr">🔴 LIVE</span>${match.category?`<span class="pill">${sportIcon(match.category)} ${match.category}</span>`:''}${fmtTime(match.date)?`<span class="pill">${fmtTime(match.date)}</span>`:''}`;
-  if(match.teams?.home?.name&&match.teams?.away?.name)
-    pills.innerHTML+=`<span class="pill pill-r">${match.teams.home.name} VS ${match.teams.away.name}</span>`;
-  const srcList=[];
-  if(match.sources?.length){
-    for(const src of match.sources.slice(0,3)){
-      try{const streams=await fetchStreams(src.source,src.id);if(Array.isArray(streams))streams.forEach(s=>{if(s.embedUrl)srcList.push({n:`${src.source.toUpperCase()} ${s.hd!==false?'HD':'SD'}`,u:s.embedUrl});});}catch{}
-    }
-    match.sources.forEach((src,i)=>{
-  for(let sn=1;sn<=3;sn++)
-    srcList.push({n:`STREAM ${i*3+sn}`,u:`${SP}/embed/${src.source}/${src.id}/${sn}`});
-});
-if(!srcList.length)srcList.push({n:'WESTREAM LIVE',u:`${SP}/matches/live`});
-  curSources=srcList;srcIdx=0;setSrcDropdown(curSources);
-  document.getElementById('pFrame').src=srcList[0].u;
-}
-
-/* ─── CONTINUE WATCHING ── */
-const CW_KEY='dkfx_cw4';
-function getCW(){try{return JSON.parse(localStorage.getItem(CW_KEY)||'[]');}catch{return[];}}
-function saveCWList(l){localStorage.setItem(CW_KEY,JSON.stringify(l.slice(0,24)));}
-function saveCW(s,e,overrideTitle,overrideUrl){
-  if(curType==='sport')return;
-  const list=getCW().filter(x=>!(x.id===(curItem?.id||overrideTitle)&&x.type===curType));
-  const item=curItem;
-  list.unshift({
-    id:item?.id||overrideTitle,type:curType,anime:isAnime,
-    title:(item?.title||item?.name||overrideTitle||'Unknown'),
-    poster:item?.poster_path?`${P5}${item.poster_path}`:'',
-    backdrop:item?.backdrop_path?`${P5}${item.backdrop_path}`:'',
-    season:s,episode:e,ts:Date.now(),
-    progress:curType==='movie'?35:curType==='livetv'?90:Math.min(92,((e-1)/20*100)+5),
-    liveUrl:overrideUrl||null
-  });
-  saveCWList(list);
-  renderCW();
-}
-function renderCW(){
-  const list=getCW();
-  const sec=document.getElementById('cw-section');
-  const row=document.getElementById('cw-row');
-  if(!list.length){sec.style.display='none';return;}
-  sec.style.display='block';
-  row.innerHTML=list.map((item,i)=>{
-    const sub=item.type==='livetv'?'LIVE TV':item.type==='movie'?(item.anime?'ANIME MOVIE':'MOVIE'):`S${item.season} E${item.episode}`;
-    const thumb=item.backdrop||item.poster;
-    return `<div class="cw-card" data-i="${i}">
-      ${thumb?`<img class="cw-thumb" src="${thumb}" alt="" onerror="this.style.display='none'">`:'<div class="cw-thumb" style="background:var(--bg4)"></div>'}
-      <div class="cw-bar-wrap"><div class="cw-bar" style="width:${item.progress||30}%"></div></div>
-      <div class="cw-info"><div class="cw-ttl">${(item.title||'').toUpperCase()}</div><div class="cw-sub">${sub}</div></div>
-      <button class="cw-del" data-i="${i}">✕</button>
-    </div>`;
-  }).join('');
-  row.querySelectorAll('.cw-card').forEach(card=>{
-    card.addEventListener('click',e=>{if(e.target.classList.contains('cw-del'))return;resumeCW(list[parseInt(card.dataset.i)]);});
-  });
-  row.querySelectorAll('.cw-del').forEach(btn=>{
-    btn.addEventListener('click',e=>{e.stopPropagation();const l=getCW();l.splice(parseInt(btn.dataset.i),1);saveCWList(l);renderCW();});
-  });
-}
-async function resumeCW(cw){
-  if(cw.type==='livetv'){return;} // Live TV feature removed — skip stale entries
-  prevPage='home-page';isAnime=cw.anime||false;dubMode=false;malId=null;
-  showPage('player-page');curType=cw.type;
-  document.getElementById('pTitle').textContent='REWINDING...';
-  document.getElementById('pPills').innerHTML='';
-  document.getElementById('pOverview').textContent='';
-  document.getElementById('pFrame').src='';
-  try{
-    const[detail,extIds]=await Promise.all([
-      cw.type==='movie'?tmdb(`/movie/${cw.id}`):tmdb(`/tv/${cw.id}`,'append_to_response=seasons'),
-      cw.anime&&cw.type==='tv'?tmdb(`/tv/${cw.id}/external_ids`):Promise.resolve(null)
-    ]);
-    curItem=detail;if(extIds?.mal_id)malId=extIds.mal_id;
-    renderPlayer(detail,cw.type,cw.anime);
-    if(cw.type==='tv'&&cw.season){
-      setTimeout(()=>{
-        const ss=document.getElementById('seasonSel');
-        if(ss){ss.value=cw.season;buildPoiGrid(cw.season,cw.episode||1);}
-      },200);
-    }
-    toast(`▶ RESUMING — ${(cw.title||'').toUpperCase()}`);
-  }catch{toast('TAPE ERROR');}
-}
-function clearCW(){localStorage.removeItem(CW_KEY);renderCW();toast('CONTINUE WATCHING CLEARED');}
-
-/* ─── TOAST ── */
-let toastT;
-function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),2800);}
-
-/* ─── INIT ── */
-initHome();
-
-/* ── MOBILE NAV ── */
-function toggleMobNav(){
-  const h=document.getElementById('hamburger');
-  const n=document.getElementById('mobileNav');
-  if(!h||!n) return;
-  const open = n.classList.toggle('open');
-  h.classList.toggle('open', open);
-  if(open) setTimeout(()=>document.getElementById('mobSearchInput')?.focus(),80);
-}
-function closeMobNav(){
-  document.getElementById('hamburger')?.classList.remove('open');
-  document.getElementById('mobileNav')?.classList.remove('open');
-}
-document.addEventListener('click', e=>{
-  const n=document.getElementById('mobileNav'), h=document.getElementById('hamburger');
-  if(n&&h&&n.classList.contains('open')&&!n.contains(e.target)&&!h.contains(e.target)) closeMobNav();
-  const menu=document.getElementById('srcDropMenu'), btn=document.getElementById('srcDropBtn');
-  if(menu&&btn&&menu.classList.contains('open')&&!menu.contains(e.target)&&!btn.contains(e.target)){
-    menu.classList.remove('open'); btn.classList.remove('open');
-  }
-});
-
-/* ═══════════════════════════════════════════════════════
-   F1 MODULE — Jolpi Ergast Mirror API
-   ═══════════════════════════════════════════════════════ */
-const F1_API='https://api.jolpi.ca/ergast/f1';
-const F1_FLAGS={'Bahrain':'🇧🇭','Saudi Arabia':'🇸🇦','Australia':'🇦🇺','Japan':'🇯🇵','China':'🇨🇳','Miami':'🇺🇸','Emilia Romagna':'🇮🇹','Monaco':'🇲🇨','Canada':'🇨🇦','Spain':'🇪🇸','Austria':'🇦🇹','Great Britain':'🇬🇧','Hungary':'🇭🇺','Belgium':'🇧🇪','Netherlands':'🇳🇱','Italy':'🇮🇹','Azerbaijan':'🇦🇿','Singapore':'🇸🇬','United States':'🇺🇸','Mexico':'🇲🇽','Brazil':'🇧🇷','Las Vegas':'🇺🇸','Qatar':'🇶🇦','Abu Dhabi':'🇦🇪'};
-const F1_TEAM_COLORS={'Red Bull':'#3671C6','Ferrari':'#E8002D','Mercedes':'#27F4D2','McLaren':'#FF8000','Aston Martin':'#229971','Alpine':'#FF87BC','Williams':'#64C4FF','RB':'#6692FF','Sauber':'#52E252','Haas':'#B6BABD'};
-function f1Flag(country){for(const k in F1_FLAGS)if(country&&country.includes(k))return F1_FLAGS[k];return'🏁';}
-function f1TeamColor(name){for(const k in F1_TEAM_COLORS)if(name&&name.includes(k))return F1_TEAM_COLORS[k];return'var(--f1-red)';}
-
-let f1Data={races:[],driverStandings:[],constructorStandings:[],lastResult:null,loaded:false};
-let f1ActiveTab='next';
-let f1CountdownTimer=null;
-let f1CalFilter='all';
-
-// Official/external links shown only when no live F1 stream is found via the sports feed
-const F1_FALLBACK_LINKS=[
-  {n:'F1 TV Pro',      url:'https://f1tv.formula1.com',     badge:'OFFICIAL', desc:'f1tv.formula1.com'},
-  {n:'YouTube F1',     url:'https://www.youtube.com/c/Formula1', badge:'HIGHLIGHTS', desc:'youtube.com/Formula1'},
-  {n:'Formula1.com Live', url:'https://www.formula1.com/en/f1-live', badge:'OFFICIAL', desc:'formula1.com'},
-  {n:'Reddit Streams', url:'https://www.reddit.com/r/motorsportsstreams', badge:'LINKS', desc:'r/motorsportsstreams'},
-];
-
-// Build embeddable stream sources for a live-sports match (same approach as openSportItem)
-async function _f1MatchSources(match){
-  const srcList=[];
-  if(match.sources?.length){
-    for(const src of match.sources.slice(0,2)){
-      try{
-        const streams=await fetchStreams(src.source,src.id);
-        if(Array.isArray(streams))streams.forEach(s=>{if(s.embedUrl)srcList.push({n:`${src.source.toUpperCase()} ${s.hd!==false?'HD':'SD'}`,u:s.embedUrl});});
-      }catch(e){}
-    }
-    match.sources.forEach((src,i)=>{for(let sn=1;sn<=2;sn++)srcList.push({n:`STREAM ${i*2+sn}`,u:`${WS}/embed/${src.source}/${src.id}/${sn}`});});
-  }
-  return srcList;
-}
-
-// Find live F1/motorsport matches from the sports feed
-async function _f1LiveMatches(){
-  const tryCats=['formula-1','f1','motorsport','motor-sports'];
-  let matches=[];
-  for(const cat of tryCats){
-    try{matches=await fetchMatches(cat);}catch(e){matches=[];}
-    if(matches.length)break;
-  }
-  if(!matches.length)return[];
-  const isF1=m=>{
-    const t=(m.title||'').toLowerCase(),c=(m.category||'').toLowerCase();
-    return c.includes('f1')||c.includes('formula')||t.includes('f1')||t.includes('formula 1')||t.includes('grand prix');
-  };
-  const f1ms=matches.filter(isF1);
-  return (f1ms.length?f1ms:matches).slice(0,4);
-}
-
-async function _f1j(path){
-  // cache-busted fetch against the live Ergast mirror
-  const r=await fetch(`${F1_API}${path}${path.includes('?')?'&':'?'}_=${Date.now()}`,{cache:'no-store'});
-  if(!r.ok)throw new Error('F1 API '+r.status);
-  return r.json();
-}
-async function loadF1(){
-  if(f1Data.loaded){_f1Hero();renderF1Tab(f1ActiveTab);return;}
-  try{
-    // Always resolve the ACTUAL current season by date, not a possibly-stale "current" alias
-    const now=new Date();
-    let year=now.getFullYear();
-    let sched=await _f1j(`/${year}.json?limit=40`);
-    let races=sched.MRData?.RaceTable?.Races||[];
-    // If this year's calendar isn't published yet, fall back to last season
-    if(!races.length){
-      year=year-1;
-      sched=await _f1j(`/${year}.json?limit=40`);
-      races=sched.MRData?.RaceTable?.Races||[];
-    }
-    f1Data.races=races;
-    f1Data.year=sched.MRData?.RaceTable?.season||year;
-
-    const[drv,con]=await Promise.all([
-      _f1j(`/${year}/driverStandings.json`),
-      _f1j(`/${year}/constructorStandings.json`),
-    ]);
-    f1Data.driverStandings=drv.MRData?.StandingsTable?.StandingsLists?.[0]?.DriverStandings||[];
-    f1Data.constructorStandings=con.MRData?.StandingsTable?.StandingsLists?.[0]?.ConstructorStandings||[];
-
-    try{
-      const lr=await _f1j(`/${year}/last/results.json`);
-      f1Data.lastResult=lr.MRData?.RaceTable?.Races?.[0]||null;
-    }catch(e){}
-
-    f1Data.loaded=true;
-    const yr=document.getElementById('f1-season-year');
-    if(yr)yr.textContent=f1Data.year;
-    _f1Hero();
-  }catch(e){console.warn('F1 API error:',e);}
-  renderF1Tab(f1ActiveTab);
-}
-
-function _f1Hero(){
-  const next=f1NextRace();
-  const r=document.getElementById('f1-hero-rounds');
-  const l=document.getElementById('f1-hero-leader');
-  const n=document.getElementById('f1-hero-next');
-  if(r)r.textContent=f1Data.races.length||'—';
-  if(l&&f1Data.driverStandings[0])l.textContent=f1Data.driverStandings[0].Driver.familyName.toUpperCase();
-  if(n&&next)n.textContent='RD '+next.round;
-}
-
-function switchF1Tab(tab,el){
-  f1ActiveTab=tab;
-  document.querySelectorAll('.f1-tab-btn').forEach(b=>b.classList.remove('active'));
-  if(el)el.classList.add('active');
-  document.querySelectorAll('.f1-tab-content').forEach(d=>d.style.display='none');
-  const t=document.getElementById('f1-'+tab);
-  if(t)t.style.display='';
-  renderF1Tab(tab);
-}
-
-function renderF1Tab(tab){
-  if(!f1Data.loaded&&tab!=='watch'){
-    const el=document.getElementById('f1-'+tab);
-    if(el)el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:var(--f1-red)"></div></div>';
-    return;
-  }
-  if(tab==='next')_f1Next();
-  else if(tab==='calendar')_f1Calendar();
-  else if(tab==='drivers')_f1Drivers();
-  else if(tab==='constructors')_f1Constructors();
-  else if(tab==='results')_f1Results();
-  else if(tab==='watch')_f1Watch();
-  else if(tab==='news')_f1News();
-}
-
-function f1NextRace(){
-  const now=Date.now();
-  return f1Data.races.find(r=>new Date(r.date+'T'+(r.time||'14:00:00Z')).getTime()>now);
-}
-
-function _f1Next(){
-  const el=document.getElementById('f1-next');if(!el)return;
-  const race=f1NextRace();
-  if(!race){el.innerHTML='<div class="spinner-wrap" style="color:rgba(255,255,255,.3)">SEASON COMPLETE 🏁</div>';return;}
-  const rDate=new Date(race.date+'T'+(race.time||'14:00:00Z'));
-  const flag=f1Flag(race.Circuit?.Location?.country||'');
-  const now=Date.now();
-  const sessions=[
-    {n:'PRACTICE 1',k:'FirstPractice'},{n:'PRACTICE 2',k:'SecondPractice'},{n:'PRACTICE 3',k:'ThirdPractice'},
-    {n:'SPRINT QUALI',k:'SprintQualifying'},{n:'SPRINT',k:'Sprint'},{n:'QUALIFYING',k:'Qualifying'},{n:'RACE',k:'race'}
-  ];
-  const sessionCards=sessions.map(s=>{
-    const o=s.k==='race'?race:race[s.k];
-    if(!o||!o.date)return'';
-    const d=new Date(o.date+'T'+(o.time||'12:00:00Z'));
-    const isPast=d<now;
-    return`<div class="f1-session-card${isPast?' past-session':''}">
-      <div class="f1-session-name">${s.n}</div>
-      <div class="f1-session-date">${d.toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'})}</div>
-      <div class="f1-session-time">${d.toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})} LOCAL</div>
-    </div>`;
-  }).join('');
-  el.innerHTML=`<div class="f1-next-wrap">
-    <div class="f1-circuit-banner">
-      <img id="f1-circuit-img" alt="" onerror="this.style.display='none'">
-      <div class="f1-circuit-banner-overlay"></div>
-      <div class="f1-circuit-banner-label">📍 ${race.Circuit?.circuitName||'CIRCUIT'}<div class="f1-snippet" data-snippet="circuit" style="margin-top:4px;max-width:480px"></div></div>
-    </div>
-    <div class="f1-race-header">
-      <div>
-        <div class="f1-race-round">ROUND ${race.round} / ${f1Data.races.length} · ${f1Data.year}</div>
-        <div class="f1-race-name">${flag} ${race.raceName}</div>
-        <div class="f1-race-circuit">📍 ${race.Circuit?.circuitName||''}, ${race.Circuit?.Location?.locality||''}, ${race.Circuit?.Location?.country||''}</div>
-      </div>
-      <div class="f1-countdown-block" id="f1-countdown"></div>
-    </div>
-    <div class="f1-schedule-grid">${sessionCards}</div>
-    <div class="f1-action-row">
-      <button class="f1-btn-primary" onclick="switchF1Tab('watch',document.querySelectorAll('.f1-tab-btn')[5])">▶ WATCH LIVE</button>
-      <button class="f1-btn-secondary" onclick="openF1Stream('https://pitwall.app')">⏱ LIVE TIMING</button>
-      <button class="f1-btn-secondary" onclick="openF1Stream('https://multiviewer.app')">🖥 MULTIVIEWER</button>
-    </div>
-    <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:18px">
-      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(255,255,255,.25);letter-spacing:2px;margin-bottom:10px">CIRCUIT LOCATION</div>
-      <iframe src="https://www.google.com/maps?q=${encodeURIComponent((race.Circuit?.circuitName||'')+', '+(race.Circuit?.Location?.locality||''))}&output=embed" style="width:100%;height:220px;border:1px solid rgba(255,255,255,.07);border-radius:6px" loading="lazy"></iframe>
-    </div>
-  </div>`;
-  _f1Countdown(rDate);
-  _f1LoadCircuitBanner(race.Circuit?.circuitName||'');
-}
-
-function _f1Countdown(target){
-  if(f1CountdownTimer)clearInterval(f1CountdownTimer);
-  function tick(){
-    const el=document.getElementById('f1-countdown');if(!el)return clearInterval(f1CountdownTimer);
-    const diff=target-Date.now();
-    if(diff<=0){el.innerHTML='<div style="font-family:Bebas Neue,sans-serif;font-size:22px;color:var(--f1-red);letter-spacing:3px;padding:10px">🏁 RACE LIVE!</div>';return;}
-    const parts=[['DAYS',Math.floor(diff/86400000)],['HRS',Math.floor((diff%86400000)/3600000)],['MIN',Math.floor((diff%3600000)/60000)],['SEC',Math.floor((diff%60000)/1000)]];
-    el.innerHTML=parts.map(([l,v])=>`<div class="f1-count-unit"><span class="f1-count-num">${String(v).padStart(2,'0')}</span><span class="f1-count-lbl">${l}</span></div>`).join('');
-  }
-  tick();f1CountdownTimer=setInterval(tick,1000);
-}
-
-function _f1Calendar(){
-  const el=document.getElementById('f1-calendar-list');if(!el)return;
-  const now=Date.now(),next=f1NextRace();
-  let races=f1Data.races;
-  if(f1CalFilter==='upcoming')races=races.filter(r=>new Date(r.date+'T14:00:00Z')>now);
-  else if(f1CalFilter==='past')races=races.filter(r=>new Date(r.date+'T14:00:00Z')<=now);
-  el.innerHTML=races.map(r=>{
-    const rDate=new Date(r.date+'T'+(r.time||'14:00:00Z'));
-    const isPast=rDate<now,isNext=next&&r.round===next.round;
-    const flag=f1Flag(r.Circuit?.Location?.country||'');
-    const st=isNext?'<span class="f1-round-status f1-status-next">NEXT</span>':isPast?'<span class="f1-round-status f1-status-done">DONE</span>':'';
-    return`<div class="f1-round${isPast?' past':''}${isNext?' next-race':''}" onclick="switchF1Tab('next',document.querySelectorAll('.f1-tab-btn')[0])">
-      <div class="f1-round-num">${r.round}</div>
-      <div class="f1-round-flag">${flag}</div>
-      <div class="f1-round-info"><div class="f1-round-name">${r.raceName}</div><div class="f1-round-circuit">${r.Circuit?.circuitName||''}</div></div>
-      ${st}
-      <div class="f1-round-date">${rDate.toLocaleDateString('en',{day:'numeric',month:'short'})}</div>
-    </div>`;
-  }).join('')||'<div style="padding:20px;color:rgba(255,255,255,.3)">No races</div>';
-}
-function filterF1Calendar(f,el){
-  f1CalFilter=f;
-  document.querySelectorAll('.f1-cal-filter-btn').forEach(b=>b.classList.remove('active'));
-  if(el)el.classList.add('active');
-  _f1Calendar();
-}
-
-function _f1Drivers(){
-  const el=document.getElementById('f1-drivers-list');if(!el)return;
-  const max=parseFloat(f1Data.driverStandings[0]?.points||1);
-  el.innerHTML=f1Data.driverStandings.map((s,i)=>{
-    const pct=Math.round((parseFloat(s.points)/max)*100);
-    const tcolor=f1TeamColor(s.Constructors?.[0]?.name||'');
-    const flag=f1Flag((s.Driver?.nationality||'').replace('British','Great Britain').replace('American','United States'));
-    const fullName=`${s.Driver?.givenName||''} ${s.Driver?.familyName||''}`.trim();
-    const dKey='d'+i;
-    return`<div class="f1-driver-row" data-driver-name="${fullName}" data-driver-key="${dKey}">
-      <div class="f1-pos${i<3?' top3':''}">${s.position}</div>
-      <div class="f1-driver-photo-ph">${flag}</div>
-      <img class="f1-driver-photo" data-driver-img="${dKey}" alt="" style="display:none">
-      <div style="flex:1">
-        <div class="f1-driver-name">${fullName}</div>
-        <div class="f1-team" style="color:${tcolor}">${s.Constructors?.[0]?.name||''}</div>
-        <div class="f1-snippet" data-snippet="${dKey}"></div>
-        <div class="f1-bar"><div class="f1-bar-fill" style="width:${pct}%;background:${tcolor}"></div></div>
-      </div>
-      <div class="f1-pts">${s.points}<span class="f1-pts-lbl">PTS</span></div>
-    </div>`;
-  }).join('');
-  _f1LoadDriverPhotos();
-}
-
-function _f1Constructors(){
-  const el=document.getElementById('f1-constructors-list');if(!el)return;
-  const max=parseFloat(f1Data.constructorStandings[0]?.points||1);
-  el.innerHTML=f1Data.constructorStandings.map((s,i)=>{
-    const pct=Math.round((parseFloat(s.points)/max)*100);
-    const tcolor=f1TeamColor(s.Constructor?.name||'');
-    const name=s.Constructor?.name||'';
-    const tKey='c'+i;
-    return`<div class="f1-driver-row" data-team-name="${name}" data-team-key="${tKey}">
-      <div class="f1-pos${i<3?' top3':''}">${s.position}</div>
-      <div class="f1-team-logo-ph">🏎</div>
-      <img class="f1-team-logo" data-team-img="${tKey}" alt="" style="display:none">
-      <div style="flex:1">
-        <div class="f1-driver-name">${name}</div>
-        <div class="f1-team">${s.Constructor?.nationality||''}</div>
-        <div class="f1-snippet" data-snippet="${tKey}"></div>
-        <div class="f1-bar"><div class="f1-bar-fill" style="width:${pct}%;background:${tcolor}"></div></div>
-      </div>
-      <div class="f1-pts">${s.points}<span class="f1-pts-lbl">PTS</span></div>
-    </div>`;
-  }).join('');
-  _f1LoadTeamLogos();
-}
-
-function _f1Results(){
-  const el=document.getElementById('f1-results-list');if(!el)return;
-  const race=f1Data.lastResult;
-  if(!race){el.innerHTML='<div style="padding:20px;color:rgba(255,255,255,.3)">No results yet</div>';return;}
-  const nl=document.getElementById('f1-last-race-name');
-  if(nl)nl.textContent=race.raceName||'';
-  const results=race.Results||[];
-  const podium=results.slice(0,3).map((r,i)=>{
-    const fullName=`${r.Driver?.givenName||''} ${r.Driver?.familyName||''}`.trim();
-    const pKey='p'+i;
-    return`<div class="f1-result-card" data-driver-name="${fullName}" data-driver-key="${pKey}">
-    <img class="f1-result-photo" data-driver-img="${pKey}" alt="" style="display:none">
-    <div class="f1-result-pos ${['p1','p2','p3'][i]}">${['1ST','2ND','3RD'][i]}</div>
-    <div class="f1-result-driver">${fullName}</div>
-    <div class="f1-result-team">${r.Constructor?.name||''}</div>
-    <div class="f1-result-time">${r.Time?.time||r.status||''}</div>
-  </div>`;
-  }).join('');
-  const rows=results.map(r=>`<div class="f1-driver-row">
-    <div class="f1-pos${parseInt(r.position)<4?' top3':''}">${r.position}</div>
-    <div style="flex:1">
-      <div class="f1-driver-name">${r.Driver?.givenName} ${r.Driver?.familyName}</div>
-      <div class="f1-team" style="color:${f1TeamColor(r.Constructor?.name||'')}">${r.Constructor?.name||''}</div>
-    </div>
-    <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(255,255,255,.4);text-align:right">
-      <div>${r.Time?.time||r.status||''}</div>
-      <div style="color:var(--gold);margin-top:3px">${r.points>0?'+'+r.points+' pts':''}</div>
-    </div>
-  </div>`).join('');
-  el.innerHTML=`<div class="f1-results-row">${podium}</div><div style="margin-top:18px">${rows}</div>`;
-  _f1LoadDriverPhotos();
-}
-
-let f1WatchLoaded=false;
-async function _f1Watch(){
-  const el=document.getElementById('f1-src-grid');if(!el)return;
-  if(f1WatchLoaded)return;
-  el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:var(--f1-red)"></div><span style="color:var(--f1-red);font-family:\'Share Tech Mono\',monospace;font-size:11px;letter-spacing:2px">FINDING LIVE F1 STREAMS</span></div>';
-  let matches=[];
-  try{matches=await _f1LiveMatches();}catch(e){}
-
-  const heading=document.getElementById('f1-src-heading');
-
-  if(!matches.length){
-    if(heading)heading.textContent='NO LIVE F1 SESSION RIGHT NOW';
-    el.innerHTML=`<div class="f1-watch-empty">
-      <div class="f1-watch-empty-icon">📡</div>
-      <div class="f1-watch-empty-text">NO LIVE F1 SESSION RIGHT NOW</div>
-      <div class="f1-watch-empty-sub">Check the NEXT RACE tab for the schedule — or try these official sources:</div>
-      <div class="f1-src-grid">
-        ${F1_FALLBACK_LINKS.map(s=>`<a class="f1-src-card f1-src-card-link" href="${s.url}" target="_blank" rel="noopener">
-          <div class="f1-src-card-name">${s.n}</div>
-          <div class="f1-src-card-url">${s.desc}</div>
-          <span class="f1-src-card-badge">${s.badge}</span>
-        </a>`).join('')}
-      </div>
-    </div>`;
-    f1WatchLoaded=true;
-    return;
-  }
-
-  if(heading)heading.textContent='LIVE F1 STREAMS';
-  let html='';
-  for(const m of matches){
-    const srcList=await _f1MatchSources(m);
-    if(!srcList.length)continue;
-    html+=`<div class="f1-match-group">
-      <div class="f1-match-group-title">${(m.title||'FORMULA 1').toUpperCase()}</div>
-      <div class="f1-src-grid">
-        ${srcList.map(s=>`<div class="f1-src-card" data-url="${s.u}" onclick="openF1Stream('${s.u}')">
-          <div class="f1-src-card-name">${s.n}</div>
-          <div class="f1-src-card-url">${(m.category||'F1').toUpperCase()}${fmtTime(m.date)?' · '+fmtTime(m.date):''}</div>
-          <span class="f1-src-card-badge">LIVE</span>
-        </div>`).join('')}
-      </div>
-    </div>`;
-  }
-  if(!html){
-    el.innerHTML=`<div class="f1-watch-empty">
-      <div class="f1-watch-empty-icon">📡</div>
-      <div class="f1-watch-empty-text">NO STREAMS AVAILABLE YET</div>
-      <div class="f1-watch-empty-sub">Try these official sources instead:</div>
-      <div class="f1-src-grid">
-        ${F1_FALLBACK_LINKS.map(s=>`<a class="f1-src-card f1-src-card-link" href="${s.url}" target="_blank" rel="noopener">
-          <div class="f1-src-card-name">${s.n}</div>
-          <div class="f1-src-card-url">${s.desc}</div>
-          <span class="f1-src-card-badge">${s.badge}</span>
-        </a>`).join('')}
-      </div>
-    </div>`;
-  } else {
-    el.innerHTML=html;
-  }
-  f1WatchLoaded=true;
-}
-
-function openF1Stream(url){
-  if(!url||!url.startsWith('http'))return;
-  const iframe=document.getElementById('f1-iframe');
-  const ph=document.getElementById('f1-player-ph');
-  const shell=document.getElementById('f1-player-shell');
-  if(iframe&&ph){
-    switchF1Tab('watch',document.querySelectorAll('.f1-tab-btn')[5]);
-    iframe.src=url;iframe.style.display='';ph.style.display='none';
-    document.querySelectorAll('.f1-src-card').forEach(c=>c.classList.toggle('active',c.dataset.url===url));
-    setTimeout(()=>shell?.scrollIntoView({behavior:'smooth',block:'center'}),100);
-  } else window.open(url,'_blank');
-}
-
-/* ── WIKIPEDIA IMAGE LOOKUP (drivers, teams, circuits) ── */
-const _wikiImgCache={};
-async function _wikiResolve(query){
-  // Resolve a fuzzy query to an actual Wikipedia page title (avoids 404s on summary endpoint)
-  try{
-    const r=await fetch(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=1&namespace=0&format=json&origin=*`,{cache:'no-store'});
-    if(!r.ok)return null;
-    const d=await r.json();
-    return d?.[1]?.[0]||null;
-  }catch(e){return null;}
-}
-const _wikiInfoCache={};
-async function wikiInfo(title,altTitle){
-  const key=title;
-  if(_wikiInfoCache[key]!==undefined)return _wikiInfoCache[key];
-  const queries=[title,altTitle].filter(Boolean);
-  for(const q of queries){
-    try{
-      const resolved=await _wikiResolve(q);
-      if(!resolved)continue;
-      const r=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(resolved.replace(/ /g,'_'))}`,{cache:'no-store'});
-      if(!r.ok)continue;
-      const d=await r.json();
-      const img=d.thumbnail?.source||d.originalimage?.source||null;
-      const extract=d.extract||null;
-      if(img||extract){const info={img,extract};_wikiInfoCache[key]=info;return info;}
-    }catch(e){}
-  }
-  _wikiInfoCache[key]=null;return null;
-}
-async function wikiImg(title,altTitle){
-  const key=title;
-  if(_wikiImgCache[key]!==undefined)return _wikiImgCache[key];
-  const info=await wikiInfo(title,altTitle);
-  const img=info?.img||null;
-  _wikiImgCache[key]=img;
-  return img;
-}
-function _f1SetImg(selector,src,phClass){
-  if(!src)return;
-  document.querySelectorAll(selector).forEach(el=>{
-    const img=new Image();
-    img.onload=()=>{
-      el.src=src;el.classList.add('loaded');
-      const ph=el.parentElement?.querySelector('.'+phClass);
-      if(ph)ph.style.display='none';
-      el.style.display='';
-    };
-    img.src=src;
-  });
-}
-function _f1SetSnippet(key,text){
-  if(!text)return;
-  const els=document.querySelectorAll(`[data-snippet="${key}"]`);
-  els.forEach(el=>{el.textContent=text.split('. ').slice(0,2).join('. ').slice(0,180)+(text.length>180?'…':'');});
-}
-async function _f1LoadDriverPhotos(){
-  const rows=document.querySelectorAll('[data-driver-name]');
-  for(const row of rows){
-    const name=row.dataset.driverName;
-    const key=row.dataset.driverKey;
-    const info=await wikiInfo(name,name+' (racing driver)');
-    if(info?.img)_f1SetImg(`img[data-driver-img="${key}"]`,info.img,'f1-driver-photo-ph');
-    if(info?.extract)_f1SetSnippet(key,info.extract);
-  }
-}
-async function _f1LoadTeamLogos(){
-  const rows=document.querySelectorAll('[data-team-name]');
-  for(const row of rows){
-    const name=row.dataset.teamName;
-    const key=row.dataset.teamKey;
-    const info=await wikiInfo(name,name+' F1 team');
-    if(info?.img)_f1SetImg(`img[data-team-img="${key}"]`,info.img,'f1-team-logo-ph');
-    if(info?.extract)_f1SetSnippet(key,info.extract);
-  }
-}
-async function _f1LoadCircuitBanner(circuitName){
-  const info=await wikiInfo(circuitName,circuitName+' circuit');
-  if(info?.img)_f1SetImg('#f1-circuit-img',info.img,'f1-circuit-ph-none');
-  if(info?.extract)_f1SetSnippet('circuit',info.extract);
-}
-
-/* ── HOT TOPICS NEWS ── */
-const F1_NEWS_FEEDS=[
-  'https://www.autosport.com/rss/f1/news/',
-  'https://www.motorsport.com/rss/f1/news/',
-  'https://www.formula1.com/en/latest/all.xml',
-];
-let f1NewsLoaded=false;
-async function _f1News(){
-  const el=document.getElementById('f1-news-list');
-  if(!el)return;
-  if(f1NewsLoaded)return;
-  el.innerHTML='<div class="spinner-wrap"><div class="spinner" style="border-top-color:var(--f1-red)"></div></div>';
-  let items=[];
-  for(const feed of F1_NEWS_FEEDS){
-    try{
-      const r=await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed)}&_=${Date.now()}`,{cache:'no-store'});
-      const d=await r.json();
-      if(d.status==='ok'&&Array.isArray(d.items)){
-        const src=(d.feed?.title||'').replace(/\.com.*$/i,'').trim()||new URL(feed).hostname.replace('www.','');
-        items=items.concat(d.items.map(it=>({...it,_source:src})));
-      }
-    }catch(e){}
-  }
-  if(!items.length){
-    el.innerHTML='<div class="spinner-wrap" style="color:rgba(255,255,255,.3)">Unable to load news right now.</div>';
-    return;
-  }
-  items.sort((a,b)=>new Date(b.pubDate)-new Date(a.pubDate));
-  items=items.slice(0,18);
-  f1NewsLoaded=true;
-  el.innerHTML=items.map(it=>{
-    const img=it.thumbnail||it.enclosure?.link||'';
-    const desc=(it.description||it.content||'').replace(/<[^>]+>/g,'').slice(0,160);
-    const date=new Date(it.pubDate);
-    const dateStr=isNaN(date)?'':date.toLocaleDateString('en',{month:'short',day:'numeric'});
-    return`<a class="f1-news-card" href="${it.link}" target="_blank" rel="noopener">
-      ${img?`<img class="f1-news-img" src="${img}" loading="lazy" onerror="this.remove()">`:''}
-      <div class="f1-news-body">
-        <div class="f1-news-src"><span>${it._source.toUpperCase()}</span><span>${dateStr}</span></div>
-        <div class="f1-news-headline">${it.title}</div>
-        <div class="f1-news-desc">${desc}</div>
-      </div>
-    </a>`;
-  }).join('');
-}
-
-/* ════════════════════════════════════════════════
-   LIVE TV MODULE — M3U HLS Player with background stream checks
-   ════════════════════════════════════════════════ */
-const LIVETV_CHANNELS=[{"name":"TNT Sports ARG","url":"https://1nyaler.streamhostingcdn.top/stream/30/index.m3u8","rawUrl":"https://1nyaler.streamhostingcdn.top/stream/30/index.m3u8","icon":"💥","group":"SPORTS"},{"name":"TyC Sports ARG","url":"https://1nyaler.streamhostingcdn.top/stream/84/index.m3u8","rawUrl":"https://1nyaler.streamhostingcdn.top/stream/84/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"ESPN LAT","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espnlat_720.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espnlat_720.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN ARG","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espnar_lng.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espnar_lng.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 2","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn2ar_lng.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn2ar_lng.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 3","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn3ar_lng.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn3ar_lng.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 3 720p","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn3lat_720.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn3lat_720.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 4 720p","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn4lat_720.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn4lat_720.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 4","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn4lat.playlist.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn4lat.playlist.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 5 720p","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn5lat_720.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn5lat_720.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 6","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn6lat_720.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn6lat_720.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 7","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn7lt_720.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espn7lt_720.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN PREMIUM","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espnpremar_lng.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espnpremar_lng.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN PREMIUM 720p","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espnpremlat_720.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-espnpremlat_720.m3u8","icon":"🏃","group":"SPORTS"},{"name":"FOX SPORTS","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-fox1ar_720.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-fox1ar_720.m3u8","icon":"🦊","group":"SPORTS"},{"name":"FOX SPORT 2","url":"https://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-fox2ar.playlist.m3u8","rawUrl":"http://181.191.141.7/Live/51334cbb88db0e050c59ef2d28c53491/local-fox2ar.playlist.m3u8","icon":"🦊","group":"SPORTS"},{"name":"win","url":"https://8.243.126.131:8000/play/a025/index.m3u8","rawUrl":"http://8.243.126.131:8000/play/a025/index.m3u8","icon":"⚽","group":"FOOTBALL"},{"name":"Win Sports","url":"https://181.78.17.52:8000/play/a0pw/index.m3u8","rawUrl":"http://181.78.17.52:8000/play/a0pw/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"WIN SPORTS","url":"https://181.78.71.71:18000/play/a03p/index.m3u8","rawUrl":"http://181.78.71.71:18000/play/a03p/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"win+","url":"https://190.60.37.154:45000/play/a00q/index.m3u8","rawUrl":"http://190.60.37.154:45000/play/a00q/index.m3u8","icon":"⚽","group":"FOOTBALL"},{"name":"TYC","url":"https://190.60.37.154:45000/play/a05a/index.m3u8","rawUrl":"http://190.60.37.154:45000/play/a05a/index.m3u8","icon":"⚽","group":"FOOTBALL"},{"name":"DSPORTS 1 🇦🇷","url":"https://190.117.20.37:8000/play/a08d/index.m3u8","rawUrl":"http://190.117.20.37:8000/play/a08d/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"DSports","url":"https://205.235.6.29:8000/play/a0nq/index.m3u8","rawUrl":"http://205.235.6.29:8000/play/a0nq/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"espn premium","url":"https://205.235.6.29:8000/play/a0pz/index.m3u8","rawUrl":"http://205.235.6.29:8000/play/a0pz/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"tnt sport","url":"https://205.235.6.29:8000/play/a0xa/index.m3u8","rawUrl":"http://205.235.6.29:8000/play/a0xa/index.m3u8","icon":"💥","group":"SPORTS"},{"name":"tnt sport premium","url":"https://205.235.6.29:8000/play/a104/index.m3u8","rawUrl":"http://205.235.6.29:8000/play/a104/index.m3u8","icon":"💥","group":"SPORTS"},{"name":"espn","url":"https://205.235.6.29:8000/play/a0zf/index.m3u8","rawUrl":"http://205.235.6.29:8000/play/a0zf/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"espn 7","url":"https://205.235.6.29:8000/play/a0zv/index.m3u8","rawUrl":"http://205.235.6.29:8000/play/a0zv/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"WIN","url":"https://217.26.190.76:8888/play/a06a/index.m3u8","rawUrl":"http://217.26.190.76:8888/play/a06a/index.m3u8","icon":"⚽","group":"FOOTBALL"},{"name":"DSPORTS +","url":"https://217.26.190.76:8888/play/a0jb/index.m3u8","rawUrl":"http://217.26.190.76:8888/play/a0jb/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"DIRECTV SPORTS","url":"https://217.26.190.76:8888/play/a0co/index.m3u8","rawUrl":"http://217.26.190.76:8888/play/a0co/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"DSports","url":"https://38.226.210.46:8000/play/A008/index.m3u8","rawUrl":"http://38.226.210.46:8000/play/A008/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"dsport","url":"https://jumangis.cloud:2082/JairoVargas/5T5wLJjTbu/117708","rawUrl":"http://jumangis.cloud:2082/JairoVargas/5T5wLJjTbu/117708","icon":"⚽","group":"SPORTS"},{"name":"TUDN USA","url":"https://m3u.tvcluboficial.com/m/m/957.m3u8","rawUrl":"http://m3u.tvcluboficial.com/m/m/957.m3u8","icon":"🇺🇸","group":"GENERAL"},{"name":"win sport","url":"https://m3u.tvcluboficial.com/m/m/1039.m3u8","rawUrl":"http://m3u.tvcluboficial.com/m/m/1039.m3u8","icon":"⚽","group":"SPORTS"},{"name":"win sports+","url":"https://m3u.tvcluboficial.com/m/m/1042.m3u8","rawUrl":"http://m3u.tvcluboficial.com/m/m/1042.m3u8","icon":"⚽","group":"SPORTS"},{"name":"ADRENALINA SPORTS","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/98.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/98.m3u8","icon":"📺","group":"SPORTS"},{"name":"CLARO SPORTS","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/103.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/103.m3u8","icon":"📺","group":"SPORTS"},{"name":"TNT SPORTS CHILE","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/462.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/462.m3u8","icon":"💥","group":"SPORTS"},{"name":"EUROSPORT 1","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/618.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/618.m3u8","icon":"🇪🇺","group":"SPORTS"},{"name":"EUROSPORT 2","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/619.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/619.m3u8","icon":"🇪🇺","group":"SPORTS"},{"name":"BEIN SPORTS Ñ","url":"https://amg01334-beinsportsllc-beinxtraesp-localnow-aekzc.amagi.tv/playlist.m3u8","rawUrl":"https://amg01334-beinsportsllc-beinxtraesp-localnow-aekzc.amagi.tv/playlist.m3u8","icon":"⭐","group":"SPORTS"},{"name":"DAZN F1","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/374.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/374.m3u8","icon":"🎯","group":"SPORTS"},{"name":"TUDN 1","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/128.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/128.m3u8","icon":"🇺🇸","group":"GENERAL"},{"name":"ESPN DEPORTES","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/112.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/112.m3u8","icon":"🏃","group":"SPORTS"},{"name":"WIN SPORTS PLUS","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/126.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/126.m3u8","icon":"⚽","group":"SPORTS"},{"name":"TUDN 2","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/791.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/791.m3u8","icon":"🇺🇸","group":"GENERAL"},{"name":"ESPN PREMIUM CHI","url":"https://186.33.40.97:8789/play/22","rawUrl":"http://186.33.40.97:8789/play/22","icon":"🏃","group":"SPORTS"},{"name":"ETC TV","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/578.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/578.m3u8","icon":"📺","group":"GENERAL"},{"name":"ESPN","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/107.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/107.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN CO","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/10685.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/10685.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 2","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/108.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/108.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 3","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/109.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/109.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 4","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/110.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/110.m3u8","icon":"🏃","group":"SPORTS"},{"name":"CLARO SPORTS","url":"https://162.19.255.233:8080/play/UNbAl57p9hXZClOu56FCTUSaL5q1VtS-E1wCfb1nvO4/m3u8","rawUrl":"http://162.19.255.233:8080/play/UNbAl57p9hXZClOu56FCTUSaL5q1VtS-E1wCfb1nvO4/m3u8","icon":"📺","group":"SPORTS"},{"name":"FOX","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/459.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/459.m3u8","icon":"🦊","group":"SPORTS"},{"name":"FOX 2","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/10532.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/10532.m3u8","icon":"🦊","group":"SPORTS"},{"name":"WIN SPORTS","url":"https://190.60.39.195:8000/play/a0ug/index.m3u8","rawUrl":"http://190.60.39.195:8000/play/a0ug/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"ESPN PREMIUN 1","url":"https://190.7.19.197:232/play/a038/index.m3u8","rawUrl":"http://190.7.19.197:232/play/a038/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 5","url":"https://181.118.158.103:8000/play/a03c/index.m3u8","rawUrl":"http://181.118.158.103:8000/play/a03c/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN ARG","url":"https://45.170.130.224:8000/play/a04l/index.m3u8","rawUrl":"http://45.170.130.224:8000/play/a04l/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"TYC SPORTS","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/8631.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/8631.m3u8","icon":"⚽","group":"SPORTS"},{"name":"TYC SPORTS Internacional","url":"https://190.7.19.197:232/play/a04w/index.m3u8","rawUrl":"http://190.7.19.197:232/play/a04w/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"DAZN 1","url":"https://znty.dyndns.org:5010/hls/eleven1.m3u8","rawUrl":"http://znty.dyndns.org:5010/hls/eleven1.m3u8","icon":"🎯","group":"SPORTS"},{"name":"DAZN 2","url":"https://znty.dyndns.org:5010/hls/eleven2.m3u8","rawUrl":"http://znty.dyndns.org:5010/hls/eleven2.m3u8","icon":"🎯","group":"SPORTS"},{"name":"DAZN 3","url":"https://znty.dyndns.org:5010/hls/eleven3.m3u8","rawUrl":"http://znty.dyndns.org:5010/hls/eleven3.m3u8","icon":"🎯","group":"SPORTS"},{"name":"DAZN 4","url":"https://znty.dyndns.org:5010/hls/eleven4.m3u8","rawUrl":"http://znty.dyndns.org:5010/hls/eleven4.m3u8","icon":"🎯","group":"SPORTS"},{"name":"DAZN 5","url":"https://znty.dyndns.org:5010/hls/eleven5.m3u8","rawUrl":"http://znty.dyndns.org:5010/hls/eleven5.m3u8","icon":"🎯","group":"SPORTS"},{"name":"МАТЧ! ФУТБOЛ 2HD 🇷🇺","url":"https://193.25.8.59:8000/fut2","rawUrl":"http://193.25.8.59:8000/fut2","icon":"📺","group":"GENERAL"},{"name":"SKY SPORT LALIGA 🇲🇽","url":"https://179.60.224.196:8000/play/a0i7/index.m3u8","rawUrl":"http://179.60.224.196:8000/play/a0i7/index.m3u8","icon":"🌐","group":"SPORTS"},{"name":"LIG 🇪🇸","url":"https://200.115.120.1:8000/play/ca124/index.m3u8","rawUrl":"http://200.115.120.1:8000/play/ca124/index.m3u8","icon":"📺","group":"GENERAL"},{"name":"МАТЧ! ФУТБOЛ 2HD 🇷🇺","url":"https://cdntv.online/low/9mlxywika2/56.m3u8","rawUrl":"http://cdntv.online/low/9mlxywika2/56.m3u8","icon":"📺","group":"GENERAL"},{"name":"TDM Desporto 🇲🇴","url":"https://cdn6.163189.xyz/163189/amty","rawUrl":"http://cdn6.163189.xyz/163189/amty","icon":"📺","group":"SPORTS"},{"name":"IDMANTV 🇹🇷","url":"https://str2.yodacdn.net/idman_300_to_small/tracks-v1a1/mono.m3u8","rawUrl":"https://str2.yodacdn.net/idman_300_to_small/tracks-v1a1/mono.m3u8","icon":"📺","group":"GENERAL"},{"name":"MAX SPORT 4 🇧🇬","url":"https://77.46.130.252:99/maxsport4","rawUrl":"http://77.46.130.252:99/maxsport4","icon":"🔴","group":"SPORTS"},{"name":"SKY SPORT LALIGA 🇲🇽","url":"https://181.78.109.48:9998/play/a06r/index.m3u8","rawUrl":"http://181.78.109.48:9998/play/a06r/index.m3u8","icon":"🌐","group":"SPORTS"},{"name":"OTT CLUB 🇷🇺","url":"https://czrb8vng.ottclub.xyz/iptv/AHMQNVLWUTM5PW/6554/index.m3u8","rawUrl":"http://czrb8vng.ottclub.xyz/iptv/AHMQNVLWUTM5PW/6554/index.m3u8","icon":"📺","group":"GENERAL"},{"name":"Digi Sport 2 🇷🇴","url":"https://91.201.172.14:35006/","rawUrl":"http://91.201.172.14:35006/","icon":"📺","group":"SPORTS"},{"name":"Матч! 🇷🇺","url":"https://catchup.videoline.ru/match/tracks-v1a1/mono.m3u8","rawUrl":"http://catchup.videoline.ru/match/tracks-v1a1/mono.m3u8","icon":"📺","group":"GENERAL"},{"name":"Матч! 🇷🇺","url":"https://bl.video.matchtv.ru/media/playlist/free_d46d0cf1712c0542ec7fd4f0808f600a_hd/17_89756005/1080/e6bef86de8a133cd7b27deb040758a00/4796141934.m3u8","rawUrl":"http://bl.video.matchtv.ru/media/playlist/free_d46d0cf1712c0542ec7fd4f0808f600a_hd/17_89756005/1080/e6bef86de8a133cd7b27deb040758a00/4796141934.m3u8","icon":"📺","group":"GENERAL"},{"name":"Матч! 🇷🇺","url":"https://cdntv.online/low/9mlxywika2/48.m3u8","rawUrl":"http://cdntv.online/low/9mlxywika2/48.m3u8","icon":"📺","group":"GENERAL"},{"name":"ESPN 2 🇦🇷","url":"https://181.205.130.194:4000/play/a07i","rawUrl":"http://181.205.130.194:4000/play/a07i","icon":"🏃","group":"SPORTS"},{"name":"ESPN 2 🇦🇷","url":"https://191.97.49.82:8001/play/a00m/index.m3u8","rawUrl":"http://191.97.49.82:8001/play/a00m/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"Dazn 1 🇵🇹","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2531/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2531/index.m3u8","icon":"🎯","group":"SPORTS"},{"name":"Dazn 1 🇵🇹","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/19158/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/19158/index.m3u8","icon":"🎯","group":"SPORTS"},{"name":"Dazn 2 🇵🇹","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2532/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2532/index.m3u8","icon":"🎯","group":"SPORTS"},{"name":"Dazn 3 🇵🇹","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/7062/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/7062/index.m3u8","icon":"🎯","group":"SPORTS"},{"name":"Dazn 4 🇵🇹","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2534/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2534/index.m3u8","icon":"🎯","group":"SPORTS"},{"name":"Dazn 5 🇵🇹","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2535/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2535/index.m3u8","icon":"🎯","group":"SPORTS"},{"name":"TNT SPORTS PREMIUM 🇬🇧","url":"https://200.115.120.1:8000/play/ca040/index.m3u8","rawUrl":"http://200.115.120.1:8000/play/ca040/index.m3u8","icon":"💥","group":"SPORTS"},{"name":"BEIN 3 🇫🇷","url":"https://145.239.5.177/559/mpegts","rawUrl":"http://145.239.5.177/559/mpegts","icon":"⭐","group":"SPORTS"},{"name":"Bein Sport 1 🇫🇷","url":"https://99.27.51.147:8080/BeinSport/index.m3u8","rawUrl":"http://99.27.51.147:8080/BeinSport/index.m3u8","icon":"⭐","group":"SPORTS"},{"name":"Bein Sport 3 🇫🇷","url":"https://99.27.51.147:8080/BeinSport3/index.m3u8","rawUrl":"http://99.27.51.147:8080/BeinSport3/index.m3u8","icon":"⭐","group":"SPORTS"},{"name":"Bein Sport 3 🇫🇷","url":"https://145.239.5.177:80/559/index.m3u8","rawUrl":"http://145.239.5.177:80/559/index.m3u8","icon":"⭐","group":"SPORTS"},{"name":"CANAL + Sport 🇫🇷","url":"https://151.80.18.177:86/Canal+_sport_HD/index.m3u8","rawUrl":"http://151.80.18.177:86/Canal+_sport_HD/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"Setenta Sport 1 🇷🇺","url":"https://cdntv.online/low/9mlxywika2/1021.m3u8","rawUrl":"http://cdntv.online/low/9mlxywika2/1021.m3u8","icon":"📺","group":"SPORTS"},{"name":"Setenta Sport 2 🇷🇺","url":"https://cdntv.online/low/9mlxywika2/1022.m3u8","rawUrl":"http://cdntv.online/low/9mlxywika2/1022.m3u8","icon":"📺","group":"SPORTS"},{"name":"Матч! 🇷🇺","url":"https://tv.tuva.ru/machtv/index.m3u8","rawUrl":"http://tv.tuva.ru/machtv/index.m3u8","icon":"📺","group":"GENERAL"},{"name":"Матч! 🇷🇺","url":"https://185.46.48.18:80/match/tracks-v1a1/mono.m3u8","rawUrl":"http://185.46.48.18:80/match/tracks-v1a1/mono.m3u8","icon":"📺","group":"GENERAL"},{"name":"Матч! 🇷🇺","url":"https://5.188.221.43:8080/play/match","rawUrl":"http://5.188.221.43:8080/play/match","icon":"📺","group":"GENERAL"},{"name":"Матч! 🇷🇺","url":"https://95.47.155.244:8001/play/a003","rawUrl":"http://95.47.155.244:8001/play/a003","icon":"📺","group":"GENERAL"},{"name":"МАТЧ! ФУТБOЛ 1HD 🇷🇺","url":"https://193.25.8.59:8000/fut","rawUrl":"http://193.25.8.59:8000/fut","icon":"📺","group":"GENERAL"},{"name":"МАТЧ! ФУТБOЛ 1HD 🇷🇺","url":"https://cdntv.online/low/9mlxywika2/55.m3u8","rawUrl":"http://cdntv.online/low/9mlxywika2/55.m3u8","icon":"📺","group":"GENERAL"},{"name":"МАТЧ! ФУТБOЛ 3HD 🇷🇺","url":"https://185.57.68.33/110/mpegts","rawUrl":"http://185.57.68.33/110/mpegts","icon":"📺","group":"GENERAL"},{"name":"Матч! Футбол 3 HD 🇷🇺","url":"https://185.57.68.33:8091/110/playlist.m3u8","rawUrl":"http://185.57.68.33:8091/110/playlist.m3u8","icon":"📺","group":"GENERAL"},{"name":"МАТЧ! ФУТБOЛ 3HD 🇷🇺","url":"https://cdntv.online/low/9mlxywika2/57.m3u8","rawUrl":"http://cdntv.online/low/9mlxywika2/57.m3u8","icon":"📺","group":"GENERAL"},{"name":"Футбол 3 (SD) 🇷🇺","url":"https://185.57.68.33:80/110/index.m3u8","rawUrl":"http://185.57.68.33:80/110/index.m3u8","icon":"📺","group":"GENERAL"},{"name":"Матч! 4 HD 🇷🇺","url":"https://46.149.191.217:9010/play/a019","rawUrl":"http://46.149.191.217:9010/play/a019","icon":"📺","group":"GENERAL"},{"name":"Setanta Sport 🇺🇦","url":"https://217.174.225.146/hls/ch004_720/index.m3u8","rawUrl":"http://217.174.225.146/hls/ch004_720/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"Суспільне Kiev Спорт HD 🇺🇦","url":"https://tva.in.ua/live/susp-sport.m3u8","rawUrl":"https://tva.in.ua/live/susp-sport.m3u8","icon":"📺","group":"GENERAL"},{"name":"Super Sport 1 🇦🇱","url":"https://93.93.113.95:25461/TV-Berati/XtreamCodes/494","rawUrl":"http://93.93.113.95:25461/TV-Berati/XtreamCodes/494","icon":"📺","group":"SPORTS"},{"name":"Super Sport 2 🇦🇱","url":"https://93.93.113.95:25461/TV-Berati/XtreamCodes/495","rawUrl":"http://93.93.113.95:25461/TV-Berati/XtreamCodes/495","icon":"📺","group":"SPORTS"},{"name":"RTSH Sport 🇦🇱","url":"https://217.73.139.200:5443/play/a01d","rawUrl":"http://217.73.139.200:5443/play/a01d","icon":"📺","group":"SPORTS"},{"name":"NOVA SPORT 1 HD 🇨🇿","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2555/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2555/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"CT SPORT HD 🇨🇿","url":"https://88.212.15.19/live/test_ctsport_25p/playlist.m3u8","rawUrl":"http://88.212.15.19/live/test_ctsport_25p/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"SPORT 1 HD 🇨🇿","url":"https://88.212.15.19/live/test_sport1_25p/playlist.m3u8","rawUrl":"http://88.212.15.19/live/test_sport1_25p/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"SPORT 2 HD 🇨🇿","url":"https://88.212.15.19/live/test_sport_2/playlist.m3u8","rawUrl":"http://88.212.15.19/live/test_sport_2/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"ARENA SPORT 1 🇨🇿","url":"https://88.212.15.19/live/test_arenasport/playlist.m3u8","rawUrl":"http://88.212.15.19/live/test_arenasport/playlist.m3u8","icon":"🏟","group":"SPORTS"},{"name":"ARENA SPORT 2 🇨🇿","url":"https://88.212.15.19/live/test_arenasport_dva/playlist.m3u8","rawUrl":"http://88.212.15.19/live/test_arenasport_dva/playlist.m3u8","icon":"🏟","group":"SPORTS"},{"name":"MAX SPORT 1 🇧🇬","url":"https://77.46.130.252:99/maxsport1","rawUrl":"http://77.46.130.252:99/maxsport1","icon":"🔴","group":"SPORTS"},{"name":"MAX SPORT 2 🇧🇬","url":"https://77.46.130.252:99/maxsport2","rawUrl":"http://77.46.130.252:99/maxsport2","icon":"🔴","group":"SPORTS"},{"name":"MAX SPORT 3 🇧🇬","url":"https://77.46.130.252:99/maxsport3","rawUrl":"http://77.46.130.252:99/maxsport3","icon":"🔴","group":"SPORTS"},{"name":"M4 Sport 🇭🇺","url":"https://46.149.191.217:9010/play/a017","rawUrl":"http://46.149.191.217:9010/play/a017","icon":"📺","group":"SPORTS"},{"name":"Sportdigital 🇩🇪","url":"https://jmp2.uk/stvp-ATAJ0500433A","rawUrl":"https://jmp2.uk/stvp-ATAJ0500433A","icon":"📺","group":"SPORTS"},{"name":"ZIGGO SPORT 2 HD 🇳🇱","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2561/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2561/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"ZIGGO SPORT 3 HD 🇳🇱","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2559/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2559/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"ZIGGO SPORT LIVE 🇳🇱","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2560/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2560/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"2TV Sport 🇳🇴","url":"https://tv.cdn.xsg.ge/gpb-2tv/index.m3u8","rawUrl":"https://tv.cdn.xsg.ge/gpb-2tv/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"ORF+ 🇦🇹","url":"https://212.186.45.34:9981/stream/channelid/906723447","rawUrl":"http://212.186.45.34:9981/stream/channelid/906723447","icon":"📺","group":"GENERAL"},{"name":"5 SPORT 🇮🇱","url":"https://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2558/index.m3u8","rawUrl":"http://wo0dyefk.dienalt.org/iptv/DV3AC2Q6YSR9XE/2558/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"TELEFE 🇦🇷","url":"https://200.115.120.1:8000/play/ca016/index.m3u8","rawUrl":"http://200.115.120.1:8000/play/ca016/index.m3u8","icon":"📺","group":"GENERAL"},{"name":"CAZE TV 1 🇧🇷","url":"https://dfr80qz435crc.cloudfront.net/MNOP/Amagi/Caze/Caze_TV_BR/Caze_TV.m3u8","rawUrl":"https://dfr80qz435crc.cloudfront.net/MNOP/Amagi/Caze/Caze_TV_BR/Caze_TV.m3u8","icon":"📺","group":"GENERAL"},{"name":"REAL MADRID TV 🇪🇸","url":"https://rmtv.akamaized.net/hls/live/2043153/rmtv-es-web/bitrate_3.m3u8","rawUrl":"https://rmtv.akamaized.net/hls/live/2043153/rmtv-es-web/bitrate_3.m3u8","icon":"📺","group":"GENERAL"},{"name":"BEIN SPORT EXTRA Ñ 🇪🇸","url":"https://bein-esp-xumo.amagi.tv/playlistR1080p.m3u8","rawUrl":"https://bein-esp-xumo.amagi.tv/playlistR1080p.m3u8","icon":"⭐","group":"SPORTS"},{"name":"TELEMUNDO 🇲🇽","url":"https://nbculocallive.akamaized.net/hls/live/2037499/puertorico/stream1/master.m3u8","rawUrl":"https://nbculocallive.akamaized.net/hls/live/2037499/puertorico/stream1/master.m3u8","icon":"🇺🇸","group":"GENERAL"},{"name":"MTR Sports-1 🇬🇧","url":"https://cdn-uw2-prod.tsv2.amagi.tv/linear/amg02873-kravemedia-mtrspt1-distrotv/playlist.m3u8","rawUrl":"https://cdn-uw2-prod.tsv2.amagi.tv/linear/amg02873-kravemedia-mtrspt1-distrotv/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"X SPORT 🇷🇺","url":"https://iptv.prosto.tv:7000/ch109/video.m3u8","rawUrl":"http://iptv.prosto.tv:7000/ch109/video.m3u8","icon":"📺","group":"SPORTS"},{"name":"Turkmenistan Sport 🇹🇲","url":"https://alpha.tv.online.tm/legacyhls/ch004_720/index.m3u8","rawUrl":"https://alpha.tv.online.tm/legacyhls/ch004_720/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"Turkmenistan Sport 🇹🇲","url":"https://217.174.225.146/legacyhls/ch004_720/index.m3u8","rawUrl":"http://217.174.225.146/legacyhls/ch004_720/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"SPORT ITALIA 🇮🇹","url":"https://amg01370-italiansportcom-sportitalia-rakuten-3hmdb.amagi.tv/amRdirect/ads_pod_type=playerpage_midroll&ads_env=prod&ads_ppid=&ads_rtvid=271861&ads_streaming_id=4f185419-74f6-4564-8ea9-4cdc60746e2f&ads_amagi_channel=781&ads_device_type=web&ads_device_model=&ads_device_year=&ads_player_width=&ads_rtv_content_language=ita&ads_market=it&ads_rtv_content_id=3741&ads_device_make=&ads_user_type=visitor&ads_content_classification=6&ads_gdpr_consent=&ads_device_lmt=1&ads_player_height=&uid=1gnmqg5gu-qsvc-bfo-gaq3-3dgjgexshpe/hls/amagi_hls_data_rakutenAA-sportitalia-rakuten/CDN/1920x1080_4540800/chunklist.m3u8","rawUrl":"https://amg01370-italiansportcom-sportitalia-rakuten-3hmdb.amagi.tv/amRdirect/ads_pod_type=playerpage_midroll&ads_env=prod&ads_ppid=&ads_rtvid=271861&ads_streaming_id=4f185419-74f6-4564-8ea9-4cdc60746e2f&ads_amagi_channel=781&ads_device_type=web&ads_device_model=&ads_device_year=&ads_player_width=&ads_rtv_content_language=ita&ads_market=it&ads_rtv_content_id=3741&ads_device_make=&ads_user_type=visitor&ads_content_classification=6&ads_gdpr_consent=&ads_device_lmt=1&ads_player_height=&uid=1gnmqg5gu-qsvc-bfo-gaq3-3dgjgexshpe/hls/amagi_hls_data_rakutenAA-sportitalia-rakuten/CDN/1920x1080_4540800/chunklist.m3u8","icon":"📺","group":"SPORTS"},{"name":"TR Sport (480p) 🇮🇹","url":"https://livetr.teleromagna.it/mia/live/playlist.m3u8","rawUrl":"https://livetr.teleromagna.it/mia/live/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"L`Equipe 🇫🇷","url":"https://jmp2.uk/stvp-FR200016Y5","rawUrl":"https://jmp2.uk/stvp-FR200016Y5","icon":"📺","group":"GENERAL"},{"name":"INFOSPORT 🇫🇷","url":"https://212.102.60.80/Infosport/index.m3u8","rawUrl":"http://212.102.60.80/Infosport/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"ON Sports+ 🇭🇰","url":"https://freem3u.xyz/api/live/play.m3u8","rawUrl":"https://freem3u.xyz/api/live/play.m3u8","icon":"📺","group":"SPORTS"},{"name":"Fox Sports 🇮🇳","url":"https://y3fqd48g.megatv.fun/iptv/NRLXRWSBWBPLN4/19146/index.m3u8","rawUrl":"http://y3fqd48g.megatv.fun/iptv/NRLXRWSBWBPLN4/19146/index.m3u8","icon":"🦊","group":"SPORTS"},{"name":"MMN Sport 🇸🇦","url":"https://mmn.mypsx.net:1935/live/mmnhdsport/chunklist.m3u8","rawUrl":"http://mmn.mypsx.net:1935/live/mmnhdsport/chunklist.m3u8","icon":"📺","group":"SPORTS"},{"name":"MASR 🇶🇦","url":"https://shls-masr-ak.akamaized.net/out/v1/d5036cabf11e45bf9d0db410ca135c18/index.m3u8","rawUrl":"https://shls-masr-ak.akamaized.net/out/v1/d5036cabf11e45bf9d0db410ca135c18/index.m3u8","icon":"📺","group":"GENERAL"},{"name":"TELETRAK 🇨🇱","url":"https://unlimited6-cl.dps.live/sportinghd/sportinghd.smil/playlist.m3u8","rawUrl":"http://unlimited6-cl.dps.live/sportinghd/sportinghd.smil/playlist.m3u8","icon":"📺","group":"GENERAL"},{"name":"Sport5 🇮🇱","url":"https://rgelive.akamaized.net/hls/live/2043151/radiolive/playlist.m3u8","rawUrl":"https://rgelive.akamaized.net/hls/live/2043151/radiolive/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"Sport5 🇮🇱","url":"https://rgelive.akamaized.net/hls/live/2043095/live3/playlist.m3u8","rawUrl":"https://rgelive.akamaized.net/hls/live/2043095/live3/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"TUDN 🇲🇽","url":"https://45.5.119.43:4000/play/a05q/index.m3u8","rawUrl":"http://45.5.119.43:4000/play/a05q/index.m3u8","icon":"🇺🇸","group":"GENERAL"},{"name":"ESPN 🇦🇷","url":"https://181.118.156.46:8000/play/a04g/index.m3u8","rawUrl":"http://181.118.156.46:8000/play/a04g/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 2 🇨🇴","url":"https://200.10.30.241:8000/play/a01r/index.m3u8","rawUrl":"http://200.10.30.241:8000/play/a01r/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"Claro Sports 2","url":"https://45.5.118.152:8000/play/a0ah/index.m3u8","rawUrl":"http://45.5.118.152:8000/play/a0ah/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"Movistar Deportes","url":"https://38.226.210.46:8000/play/a06d/index.m3u8","rawUrl":"http://38.226.210.46:8000/play/a06d/index.m3u8","icon":"📺","group":"FOOTBALL"},{"name":"Tigo Sports","url":"https://181.78.17.52:8000/play/a0rq/index.m3u8","rawUrl":"http://181.78.17.52:8000/play/a0rq/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"Via X Sport","url":"https://38.226.49.253:8000/play/a042/index.m3u8","rawUrl":"http://38.226.49.253:8000/play/a042/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"Golf Channel","url":"https://45.167.1.136:8000/play/a05s","rawUrl":"http://45.167.1.136:8000/play/a05s","icon":"⛳","group":"SPORTS"},{"name":"Golf Channel","url":"https://andro.226503.xyz/checklist/androstreamlivebiraz1.m3u8","rawUrl":"https://andro.226503.xyz/checklist/androstreamlivebiraz1.m3u8","icon":"⛳","group":"SPORTS"},{"name":"BEIN SPORTS 2 Turkey","url":"https://andro.okan11gote12sokan.cfd/checklist/androstreamlivebs2.m3u8","rawUrl":"https://andro.okan11gote12sokan.cfd/checklist/androstreamlivebs2.m3u8","icon":"⭐","group":"SPORTS"},{"name":"BEIN SPORTS 3 Turkey","url":"https://andro.okan11gote12sokan.cfd/checklist/androstreamlivebs3.m3u8","rawUrl":"https://andro.okan11gote12sokan.cfd/checklist/androstreamlivebs3.m3u8","icon":"⭐","group":"SPORTS"},{"name":"BEIN SPORTS 4 Turkey","url":"https://andro.okan11gote12sokan.cfd/checklist/androstreamlivebs4.m3u8","rawUrl":"https://andro.okan11gote12sokan.cfd/checklist/androstreamlivebs4.m3u8","icon":"⭐","group":"SPORTS"},{"name":"BEIN SPORTS 5 Turkey","url":"https://andro.226503.xyz/checklist/androstreamlivebs5.m3u8","rawUrl":"https://andro.226503.xyz/checklist/androstreamlivebs5.m3u8","icon":"⭐","group":"SPORTS"},{"name":"BEIN SPORTS France (alt)","url":"https://99.27.51.147:8080/BeinSport/mpegts","rawUrl":"http://99.27.51.147:8080/BeinSport/mpegts","icon":"⭐","group":"SPORTS"},{"name":"BEIN SPORTS 3 France (Alt)","url":"https://99.27.51.147:8080/BeinSport3/mpegts","rawUrl":"http://99.27.51.147:8080/BeinSport3/mpegts","icon":"⭐","group":"SPORTS"},{"name":"NBC Team USA","url":"https://amg01416-amg01416c4-firetv-us-4522.playouts.now.amagi.tv/playlist.m3u8","rawUrl":"https://amg01416-amg01416c4-firetv-us-4522.playouts.now.amagi.tv/playlist.m3u8","icon":"🇺🇸","group":"GENERAL"},{"name":"AYM Sports","url":"https://aym-as.otteravision.com/aym/as/as.m3u8","rawUrl":"https://aym-as.otteravision.com/aym/as/as.m3u8","icon":"📺","group":"SPORTS"},{"name":"BEK Sports West (USA)","url":"https://cdn3.wowza.com/5/ZWQ1K2NYTmpFbGsr/BEK-WOWZA-1/smil:BEKPRIMEW.smil/.m3u8","rawUrl":"https://cdn3.wowza.com/5/ZWQ1K2NYTmpFbGsr/BEK-WOWZA-1/smil:BEKPRIMEW.smil/.m3u8","icon":"📺","group":"SPORTS"},{"name":"RS News","url":"https://video07.logicahost.com.br/rsnews01/rsnews01/playlist.m3u8","rawUrl":"https://video07.logicahost.com.br/rsnews01/rsnews01/playlist.m3u8","icon":"📺","group":"GENERAL"},{"name":"RS Sports 1","url":"https://video07.logicahost.com.br/rssports01/rssports01/playlist.m3u8","rawUrl":"https://video07.logicahost.com.br/rssports01/rssports01/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"RS Sports 2","url":"https://video07.logicahost.com.br/rssports02/rssports02/playlist.m3u8","rawUrl":"https://video07.logicahost.com.br/rssports02/rssports02/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"RS Sports 3","url":"https://video07.logicahost.com.br/rssports03/rssports03/playlist.m3u8","rawUrl":"https://video07.logicahost.com.br/rssports03/rssports03/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"RS Sports 4","url":"https://video07.logicahost.com.br/rssports04/rssports04/playlist.m3u8","rawUrl":"https://video07.logicahost.com.br/rssports04/rssports04/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"RS Sports 5","url":"https://video03.logicahost.com.br/rssports5/rssports5/playlist.m3u8","rawUrl":"https://video03.logicahost.com.br/rssports5/rssports5/playlist.m3u8","icon":"📺","group":"SPORTS"},{"name":"RS TV","url":"https://video07.logicahost.com.br/rstv1/rstv1/playlist.m3u8","rawUrl":"https://video07.logicahost.com.br/rstv1/rstv1/playlist.m3u8","icon":"📺","group":"GENERAL"},{"name":"RS News Web","url":"https://video01.logicahost.com.br/rsnewswebtv/rsnewswebtv/playlist.m3u8","rawUrl":"https://video01.logicahost.com.br/rsnewswebtv/rsnewswebtv/playlist.m3u8","icon":"📺","group":"GENERAL"},{"name":"RS PREMIERE","url":"https://video03.logicahost.com.br/rspremiere/rspremiere/playlist.m3u8","rawUrl":"https://video03.logicahost.com.br/rspremiere/rspremiere/playlist.m3u8","icon":"📺","group":"GENERAL"},{"name":"Latino | beIN Sports ñ HD","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/101.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/101.m3u8","icon":"⭐","group":"SPORTS"},{"name":"Latino | FOX SPORTS HD","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/113.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/113.m3u8","icon":"🦊","group":"SPORTS"},{"name":"Latino | FOX SPORTS 2 HD","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/114.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/114.m3u8","icon":"🦊","group":"SPORTS"},{"name":"Latino | REAL MADRID HD","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/121.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/121.m3u8","icon":"📺","group":"GENERAL"},{"name":"MX | TVC DEPORTES HD","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/122.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/122.m3u8","icon":"📺","group":"GENERAL"},{"name":"Latino | Win Sports HD","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/125.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/125.m3u8","icon":"⚽","group":"SPORTS"},{"name":"espn4","url":"https://45.5.119.43:4000/play/a028/index.m3u8","rawUrl":"http://45.5.119.43:4000/play/a028/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"la liga","url":"https://45.5.119.43:4000/play/a05r/index.m3u8","rawUrl":"http://45.5.119.43:4000/play/a05r/index.m3u8","icon":"📺","group":"GENERAL"},{"name":"espn2","url":"https://45.5.119.43:4000/play/a053/index.m3u8","rawUrl":"http://45.5.119.43:4000/play/a053/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"SKY SPORTS GT","url":"https://45.171.64.30:2000/play/a08m/index.m3u8","rawUrl":"http://45.171.64.30:2000/play/a08m/index.m3u8","icon":"🌐","group":"SPORTS"},{"name":"TIGO SPORT","url":"https://45.171.64.30:2000/play/a08e/index.m3u8","rawUrl":"http://45.171.64.30:2000/play/a08e/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"Winsport","url":"https://181.78.85.59:2500/play/a030/index.m3u8","rawUrl":"http://181.78.85.59:2500/play/a030/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"ESPN CO","url":"https://181.205.130.194:4000/play/a08n","rawUrl":"http://181.205.130.194:4000/play/a08n","icon":"🏃","group":"SPORTS"},{"name":"ESPN 6 HD","url":"https://181.205.130.194:4000/play/a0eh","rawUrl":"http://181.205.130.194:4000/play/a0eh","icon":"🏃","group":"SPORTS"},{"name":"TUDN","url":"https://45.171.64.30:2000/play/a08j/index.m3u8","rawUrl":"http://45.171.64.30:2000/play/a08j/index.m3u8","icon":"🇺🇸","group":"GENERAL"},{"name":"Latino | FOX SPORTS PREMIUM HD","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/375.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/375.m3u8","icon":"🦊","group":"SPORTS"},{"name":"Latino | FOX DEPORTES HD","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/376.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/376.m3u8","icon":"🦊","group":"SPORTS"},{"name":"Latino | TYC SPORTS HD","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/380.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/380.m3u8","icon":"⚽","group":"SPORTS"},{"name":"USA | NBA TV","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/402.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/402.m3u8","icon":"📺","group":"GENERAL"},{"name":"AR | ESPN 2 HD","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/449.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/449.m3u8","icon":"🏃","group":"SPORTS"},{"name":"USA | Fox Soccer Plus","url":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/3414.m3u8","rawUrl":"https://tv.topmediatv.net:25463/live/TopMediaWeb/bOteTR8ED1/3414.m3u8","icon":"🦊","group":"SPORTS"},{"name":"Fox SPORTS 3","url":"https://45.5.119.43:4000/play/a024/index.m3u8","rawUrl":"http://45.5.119.43:4000/play/a024/index.m3u8","icon":"🦊","group":"SPORTS"},{"name":"5","url":"https://45.5.119.43:4000/play/a05o/index.m3u8","rawUrl":"http://45.5.119.43:4000/play/a05o/index.m3u8","icon":"📺","group":"GENERAL"},{"name":"Win2","url":"https://190.60.37.118:4000/play/a0bw","rawUrl":"http://190.60.37.118:4000/play/a0bw","icon":"⚽","group":"FOOTBALL"},{"name":"Gol TV","url":"https://38.44.109.41:8003/play/a02h/index.m3u8","rawUrl":"http://38.44.109.41:8003/play/a02h/index.m3u8","icon":"📺","group":"SPORTS"},{"name":"ESPN Premium","url":"https://217.26.190.76:8888/play/a0es/index.m3u8","rawUrl":"http://217.26.190.76:8888/play/a0es/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN IXP","url":"https://200.229.147.142:8000/play/a013/index.m3u8","rawUrl":"http://200.229.147.142:8000/play/a013/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"TUDN IXP","url":"https://200.229.147.142:8000/play/a096/index.m3u8","rawUrl":"http://200.229.147.142:8000/play/a096/index.m3u8","icon":"🇺🇸","group":"GENERAL"},{"name":"ESPN 4 HD","url":"https://181.78.49.113:9999/play/a07e/index.m3u8","rawUrl":"http://181.78.49.113:9999/play/a07e/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"ESPN 5 HD","url":"https://181.78.49.113:9999/play/a07f/index.m3u8","rawUrl":"http://181.78.49.113:9999/play/a07f/index.m3u8","icon":"🏃","group":"SPORTS"},{"name":"win4","url":"https://181.205.130.194:4000/play/a0fu","rawUrl":"http://181.205.130.194:4000/play/a0fu","icon":"⚽","group":"FOOTBALL"},{"name":"Mundial NBC Universo","url":"https://190.11.225.124:5000/live/universo_hd/playlist.m3u8","rawUrl":"http://190.11.225.124:5000/live/universo_hd/playlist.m3u8","icon":"🇺🇸","group":"GENERAL"},{"name":"Mundial Azteca UNO","url":"https://38.44.109.41:8003/play/a033/index.m3u8","rawUrl":"http://38.44.109.41:8003/play/a033/index.m3u8","icon":"📺","group":"GENERAL"},{"name":"Azteca 7","url":"https://tv91.hostingnuclear.com:19360/xhunestv/xhunestv.m3u8","rawUrl":"https://tv91.hostingnuclear.com:19360/xhunestv/xhunestv.m3u8","icon":"📺","group":"GENERAL"},{"name":"Azteca 7a","url":"https://estrellatv-roku.amagi.tv/playlist.m3u8","rawUrl":"https://estrellatv-roku.amagi.tv/playlist.m3u8","icon":"📺","group":"GENERAL"},{"name":"BeiN Sports Extra","url":"https://bein-esp-xumo.amagi.tv/playlistR720P.m3u8","rawUrl":"https://bein-esp-xumo.amagi.tv/playlistR720P.m3u8","icon":"⭐","group":"SPORTS"},{"name":"BEIN SPORTS 1 AU","url":"https://wahyu1ptv.pages.dev/AstroBein2.m3u8","rawUrl":"https://wahyu1ptv.pages.dev/AstroBein2.m3u8","icon":"⭐","group":"SPORTS"},{"name":"BEIN SPORTS 1 AU","url":"https://wahyu1ptv.pages.dev/AstroBein3.m3u8","rawUrl":"https://wahyu1ptv.pages.dev/AstroBein3.m3u8","icon":"⭐","group":"SPORTS"},{"name":"RTI 1 (1080p)","url":"https://69.64.57.208:8080/rti1/playlist.m3u8","rawUrl":"http://69.64.57.208:8080/rti1/playlist.m3u8","icon":"📺","group":"GENERAL"},{"name":"RTI 2 (1080p)","url":"https://69.64.57.208:8080/rti2/playlist.m3u8","rawUrl":"http://69.64.57.208:8080/rti2/playlist.m3u8","icon":"📺","group":"GENERAL"},{"name":"✔️ Bein Sports Xtra ñ *2","url":"https://bein-esp-xumo.amagi.tv/playlist.m3u8","rawUrl":"https://bein-esp-xumo.amagi.tv/playlist.m3u8","icon":"⭐","group":"SPORTS"},{"name":"✔️ Garage TV","url":"https://stream1.sersat.com/hls/garagetv.m3u8","rawUrl":"https://stream1.sersat.com/hls/garagetv.m3u8","icon":"📺","group":"GENERAL"},{"name":"✔️ Red Bull TV","url":"https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master_3360.m3u8","rawUrl":"http://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master_3360.m3u8","icon":"📺","group":"GENERAL"},{"name":"✔️ TyC Sports","url":"https://38.44.109.41:8003/play/a02l/index.m3u8","rawUrl":"http://38.44.109.41:8003/play/a02l/index.m3u8","icon":"⚽","group":"SPORTS"},{"name":"✔️ Xtrema TV Cna Deportes 2","url":"https://stmv6.voxtvhd.com.br/cnardeportes/cnardeportes/playlist.m3u8","rawUrl":"https://stmv6.voxtvhd.com.br/cnardeportes/cnardeportes/playlist.m3u8","icon":"📺","group":"GENERAL"},{"name":"Tango Sports 4","url":"https://190.7.19.197:232/play/a037/index.m3u8","rawUrl":"http://190.7.19.197:232/play/a037/index.m3u8","icon":"📺","group":"SPORTS"}];
-
-let ltvState={};  // url -> 'live'|'offline'|'checking'
-let ltvCatFilter='all';
-let ltvSearchQ='';
-let ltvInited=false;
-let ltvHls=null;
-let ltvCheckQueue=[];
-let ltvCheckActive=0;
-const LTV_CONCURRENCY=6;  // parallel checks
-
-function initLiveTV(){
-  if(ltvInited)return;
-  ltvInited=true;
-  // Init all as 'checking'
-  LIVETV_CHANNELS.forEach(ch=>{ ltvState[ch.url]='checking'; });
-  updateLTVStats();
-  renderLTVGrid();
-  // Background check all channels
-  ltvCheckQueue=[...LIVETV_CHANNELS];
-  for(let i=0;i<LTV_CONCURRENCY;i++) _ltvNextCheck();
-}
-
-function updateLTVStats(){
-  const total=LIVETV_CHANNELS.length;
-  const live=Object.values(ltvState).filter(s=>s==='live').length;
-  const checking=Object.values(ltvState).filter(s=>s==='checking').length;
-  document.getElementById('ltv-total').textContent=total;
-  document.getElementById('ltv-live').textContent=live;
-  document.getElementById('ltv-checking').textContent=checking>0?checking:'✓';
-}
-
-async function _ltvNextCheck(){
-  if(!ltvCheckQueue.length)return;
-  const ch=ltvCheckQueue.shift();
-  ltvCheckActive++;
-  ltvState[ch.url]='checking';
-  try{
-    // Use no-cors HEAD — opaque response means the server responded (not blocked/timed out)
-    // All URLs are already HTTPS so no mixed-content issue here
-    const ctrl=new AbortController();
-    const timeout=setTimeout(()=>ctrl.abort(),7000);
-    await fetch(ch.url,{method:'HEAD',signal:ctrl.signal,mode:'no-cors'});
-    clearTimeout(timeout);
-    ltvState[ch.url]='live';
-  }catch(e){
-    // AbortError = timeout = likely offline; other errors (CORS etc) still mean server replied = likely live
-    ltvState[ch.url]=e.name==='AbortError'?'offline':'live';
-  }
-  ltvCheckActive--;
-  updateLTVStats();
-  _updateLTVCard(ch.url);
-  _ltvNextCheck();
-}
-
-function _updateLTVCard(url){
-  const card=document.querySelector(`.ltv-card[data-url="${CSS.escape(url)}"]`);
-  if(!card)return;
-  const s=ltvState[url]||'checking';
-  card.className='ltv-card '+s;
-  const dot=card.querySelector('.ltv-status-dot');
-  const lbl=card.querySelector('.ltv-status-lbl');
-  if(dot)dot.className='ltv-status-dot '+s;
-  if(lbl)lbl.textContent=s==='live'?'LIVE':s==='offline'?'OFFLINE':'CHK...';
-  if(s==='live')card.classList.add('live');
-}
-
-function renderLTVGrid(){
-  const el=document.getElementById('ltv-grid');
-  if(!el)return;
-  const q=ltvSearchQ.toLowerCase();
-  let chs=LIVETV_CHANNELS.filter(ch=>{
-    if(ltvCatFilter==='live')return ltvState[ch.url]==='live';
-    if(ltvCatFilter==='all')return true;
-    return ch.group===ltvCatFilter;
-  });
-  if(q)chs=chs.filter(ch=>ch.name.toLowerCase().includes(q));
-  if(!chs.length){el.innerHTML='<div class="ltv-empty">NO CHANNELS FOUND</div>';return;}
-  el.innerHTML=chs.map(ch=>{
-    const s=ltvState[ch.url]||'checking';
-    return`<div class="ltv-card ${s}" data-url="${ch.url.replace(/"/g,'&quot;')}" onclick="ltvPlay(${JSON.stringify(ch).replace(/"/g,'&quot;')})">
-      <div class="ltv-status"><span class="ltv-status-dot ${s}"></span><span class="ltv-status-lbl">${s==='live'?'LIVE':s==='offline'?'OFFLINE':'CHK...'}</span></div>
-      <div class="ltv-card-icon">${ch.icon}</div>
-      <div class="ltv-card-name">${ch.name}</div>
-      <div class="ltv-card-group">${ch.group}</div>
-    </div>`;
-  }).join('');
-}
-
-function filterLTV(){
-  ltvSearchQ=document.getElementById('ltv-search')?.value||'';
-  renderLTVGrid();
-}
-function filterLTVCat(cat,el){
-  ltvCatFilter=cat;
-  document.querySelectorAll('.ltv-filter-btn').forEach(b=>b.classList.remove('active'));
-  if(el)el.classList.add('active');
-  renderLTVGrid();
-}
-
-function ltvPlay(ch){
-  const wrap=document.getElementById('ltv-player-wrap');
-  const titleEl=document.getElementById('ltv-player-title');
-  const video=document.getElementById('ltv-video');
-  if(!wrap||!video)return;
-  wrap.style.display='';
-  if(titleEl)titleEl.textContent=ch.name.toUpperCase();
-  wrap.scrollIntoView({behavior:'smooth',block:'start'});
-
-  // Destroy previous HLS instance
-  if(ltvHls){ltvHls.destroy();ltvHls=null;}
-  video.src='';
-
-  const url=ch.url; // always HTTPS after our upgrade
-  if(typeof Hls==='undefined'||!Hls.isSupported()){
-    // Native HLS (Safari/iOS)
-    video.src=url;video.play().catch(()=>{});
-  }else{
-    ltvHls=new Hls({enableWorker:true,lowLatencyMode:true});
-    ltvHls.on(Hls.Events.ERROR,(ev,data)=>{
-      if(data.fatal){
-        ltvState[url]='offline';
-        _updateLTVCard(url);
-        updateLTVStats();
-        ltvHls?.destroy();ltvHls=null;
-        // Show error in player
-        if(titleEl)titleEl.textContent=ch.name.toUpperCase()+' — STREAM UNAVAILABLE';
-      }
-    });
-    ltvHls.loadSource(url);
-    ltvHls.attachMedia(video);
-    ltvHls.on(Hls.Events.MANIFEST_PARSED,()=>{
-      video.play().catch(()=>{});
-      ltvState[url]='live';
-      _updateLTVCard(url);
-      updateLTVStats();
-    });
-  }
-}
-
-function closeLTVPlayer(){
-  const wrap=document.getElementById('ltv-player-wrap');
-  const video=document.getElementById('ltv-video');
-  if(ltvHls){ltvHls.destroy();ltvHls=null;}
-  if(video){video.pause();video.src='';}
-  if(wrap)wrap.style.display='none';
-}
+  const tl=anime
 </script>
 </body>
 </html>
