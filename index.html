@@ -3228,6 +3228,31 @@ function closeLTVPlayer(){
   if(video){video.pause();video.src='';}
   if(wrap)wrap.style.display='none';
 }
+<div class="player-shell" id="player-shell">
+  <video id="player-video" controls playsinline crossorigin="anonymous"
+         style="width:100%;height:100%;background:#000"></video>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+<script>
+function loadStream(url) {
+  const video = document.getElementById('player-video');
+  video.pause(); video.src = '';
+  if (Hls.isSupported()) {
+    const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+    hls.loadSource(url);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(()=>{}));
+    hls.on(Hls.Events.ERROR, (e, d) => {
+      if (d.fatal) console.error('HLS fatal:', d.type, d.details);
+    });
+    video._hls = hls;
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = url;
+    video.addEventListener('loadedmetadata', () => video.play().catch(()=>{}));
+  } else {
+    alert('HLS not supported in this browser');
+  }
+}
 </script>
 </body>
 </html>
