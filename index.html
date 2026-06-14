@@ -1816,123 +1816,19 @@ header{
 /* ─── TMDB ── */
 const TK='4e44d9029b1270a757cddc766a1bcb63',TB='https://api.themoviedb.org/3',P3='https://image.tmdb.org/t/p/w300',P5='https://image.tmdb.org/t/p/w500';
 async function tmdb(p,q=''){const r=await fetch(`${TB}${p}?api_key=${TK}&language=en-US&${q}`);return r.json();}
-/* ─── SPORTS API (streamed.pk) ── */
-const SP='https://streamed.pk';
-
-async function spFetch(path){
-  const r=await fetch(`${SP}${path}`);
-  if(!r.ok)throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
-
-// Map our internal filter names to streamed.pk sport slugs
-const SP_SPORT_MAP={
-  'all':null,
-  'football':'football',
-  'soccer':'football',
-  'basketball':'basketball',
-  'american-football':'american-football',
-  'hockey':'hockey',
-  'baseball':'baseball',
-  'tennis':'tennis',
-  'mma':'fight',
-  'boxing':'fight',
-  'motorsport':'motor-sports',
-  'formula-1':'motor-sports',
-  'f1':'motor-sports',
-  'motogp':'motor-sports',
-  'nascar':'motor-sports',
-  'indycar':'motor-sports',
-  'wec':'motor-sports',
-  'rally':'motor-sports',
-  'wrc':'motor-sports',
-  'formula-e':'motor-sports',
-  'cricket':'cricket',
-  'rugby':'rugby',
-  'golf':'golf',
-};
-
-// Normalize streamed.pk match to internal format
-function normStreamedMatch(m){
-  return {
-    id: m.id,
-    title: m.title || (m.teams?.home?.name&&m.teams?.away?.name ? `${m.teams.home.name} vs ${m.teams.away.name}` : 'Live Match'),
-    category: m.category || 'sport',
-    popular: m.popular || false,
-    isLive: m.status==='live' || m.popular || false,
-    date: m.date,
-    teams: m.teams || null,
-    sources: m.sources || [],
-    poster: m.poster,
-  };
-}
-
+/* ─── SPORTS APIs ── */
+const WS='https://westream.su',SR='https://api.sportsrc.org';
 async function fetchMatches(cat='all'){
   try{
-    let raw=[];
-    const spCat=SP_SPORT_MAP[cat]||null;
-    if(cat==='all'){
-      // Fetch live + popular together for richer results
-      const[live,pop]=await Promise.allSettled([
-        spFetch('/api/matches/live'),
-        spFetch('/api/matches/all/popular'),
-      ]);
-      const liveData=live.status==='fulfilled'&&Array.isArray(live.value)?live.value:[];
-      const popData=pop.status==='fulfilled'&&Array.isArray(pop.value)?pop.value:[];
-      // Merge, deduplicate by id
-      const seen=new Set();
-      [...liveData,...popData].forEach(m=>{if(!seen.has(m.id)){seen.add(m.id);raw.push(m);}});
-    } else if(spCat){
-      const[bySport,byPop]=await Promise.allSettled([
-        spFetch(`/api/matches/${spCat}`),
-        spFetch(`/api/matches/${spCat}/popular`),
-      ]);
-      const a=bySport.status==='fulfilled'&&Array.isArray(bySport.value)?bySport.value:[];
-      const b=byPop.status==='fulfilled'&&Array.isArray(byPop.value)?byPop.value:[];
-      const seen=new Set();
-      [...a,...b].forEach(m=>{if(!seen.has(m.id)){seen.add(m.id);raw.push(m);}});
-    } else {
-      raw=await spFetch('/api/matches/all');
-    }
-    return raw.map(normStreamedMatch);
-  }catch(err){
-    console.warn('Sports API error:',err);
-    return[];
+    const u=cat==='all'?`${WS}/matches/live`:`${WS}/matches/${encodeURIComponent(cat)}`;
+    const r=await fetch(u);if(!r.ok)throw 0;return await r.json();
+  }catch{
+    try{const r=await fetch(`${SR}/?data=matches&category=${cat}`);const d=await r.json();return Array.isArray(d)?d:[];}
+    catch{return[];}
   }
 }
-
-async function fetchStreams(source, sourceId){
-  try{
-    const r=await fetch(`${SP}/api/stream/${source}/${sourceId}`);
-    if(!r.ok)return[];
-    const streams=await r.json();
-    return Array.isArray(streams)?streams:[];
-  }catch{return[];}
-}
-
-function spBadgeUrl(badgeId){
-  if(!badgeId)return null;
-  const clean=badgeId.replace(/\.(webp|png|jpg|jpeg)$/i,'');
-  return `${SP}/api/images/badge/${clean}.webp`;
-}
-
-function spPosterUrl(m){
-  if(m.poster){
-    if(m.poster.startsWith('http')){
-      return `${SP}/api/images/proxy/${encodeURIComponent(m.poster)}.webp`;
-    }
-    if(m.poster.length>30&&!m.poster.includes('/')){
-      return `${SP}/api/images/proxy/${m.poster}.webp`;
-    }
-    return `${SP}/api/images/poster/${m.poster}.webp`;
-  }
-  const hb=m.teams?.home?.badge,ab=m.teams?.away?.badge;
-  if(hb&&ab){
-    const ch=hb.replace(/\.(webp|png|jpg|jpeg)$/i,'');
-    const ca=ab.replace(/\.(webp|png|jpg|jpeg)$/i,'');
-    return `${SP}/api/images/poster/${ch}/${ca}.webp`;
-  }
-  return null;
+async function fetchStreams(src,id){
+  try{const r=await fetch(`${WS}/stream/${src}/${id}`);if(!r.ok)throw 0;return await r.json();}catch{return[];}
 }
 
 /* ─── STATE ── */
@@ -2388,40 +2284,15 @@ function sportCardHTML(m){
   const ncat=normCat(m.category);
   const icon=sportIcon(ncat);
   const home=m.teams?.home?.name||'',away=m.teams?.away?.name||'';
-  const homeBadge=m.teams?.home?.badge?spBadgeUrl(m.teams.home.badge):null;
-  const awayBadge=m.teams?.away?.badge?spBadgeUrl(m.teams.away.badge):null;
   const title=m.title||(home&&away?`${home} vs ${away}`:'Live Match');
   const isLive=m.popular||m.isLive||(m.date&&Math.abs(Date.now()-new Date(m.date))<4*3600000);
-  const posterUrl=spPosterUrl(m);
-
-  // Build thumb: use poster if available, else team badges side-by-side, else icon
-  let thumbHTML='';
-  if(posterUrl){
-    thumbHTML=`<img class="sport-thumb" src="${posterUrl}" alt="" loading="lazy" onerror="this.style.display='none';this.nextSibling.style.removeProperty('display')">
-    <div class="sport-thumb-ph" style="display:none">${icon?`<span style="font-size:32px">${icon}</span>`:''}<span style="font-family:'VT323',monospace;font-size:11px;color:var(--muted)">${(ncat||'SPORT').toUpperCase()}</span></div>`;
-  } else if(homeBadge&&awayBadge){
-    thumbHTML=`<div class="sport-thumb-ph" style="flex-direction:row;gap:8px;background:linear-gradient(135deg,rgba(34,197,94,.04),transparent)">
-      <img src="${homeBadge}" alt="${home}" style="height:44px;width:44px;object-fit:contain" onerror="this.style.display='none'">
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--vhs-red)">VS</span>
-      <img src="${awayBadge}" alt="${away}" style="height:44px;width:44px;object-fit:contain" onerror="this.style.display='none'">
-    </div>`;
-  } else {
-    thumbHTML=`<div class="sport-thumb-ph">${icon?`<span style="font-size:32px">${icon}</span>`:''}<span style="font-family:'VT323',monospace;font-size:11px;color:var(--muted)">${(ncat||'SPORT').toUpperCase()}</span></div>`;
-  }
-
-  return `<div class="sport-card" data-m='${JSON.stringify({id:m.id,title,category:ncat,sources:m.sources,date:m.date,teams:m.teams,poster:m.poster}).replace(/'/g,"&#39;")}' style="position:relative">
-    ${thumbHTML}
+  return `<div class="sport-card" data-m='${JSON.stringify({id:m.id,title,category:ncat,sources:m.sources,date:m.date,teams:m.teams}).replace(/'/g,"&#39;")}' style="position:relative">
+    <div class="sport-thumb-ph">${icon?`<span style="font-size:32px">${icon}</span>`:''}<span style="font-family:'VT323',monospace;font-size:11px;color:var(--muted)">${(ncat||'SPORT').toUpperCase()}</span></div>
     ${isLive?`<div class="slive"><span class="sldot"></span>LIVE</div>`:''}
     <div class="sport-info">
       <div class="sport-ttl">${title.toUpperCase()}</div>
       ${fmtTime(m.date)?`<div class="sport-time">🕐 ${fmtTime(m.date)}</div>`:''}
-      ${home&&away?`<div class="sport-teams">
-        <div class="sport-team">${homeBadge?`<img src="${homeBadge}" style="height:22px;object-fit:contain;margin-bottom:2px" onerror="this.style.display='none'">`:''}
-          <div class="sport-team-n">${home}</div></div>
-        <div class="sport-vs">VS</div>
-        <div class="sport-team">${awayBadge?`<img src="${awayBadge}" style="height:22px;object-fit:contain;margin-bottom:2px" onerror="this.style.display='none'">`:''}
-          <div class="sport-team-n">${away}</div></div>
-      </div>`:''}
+      ${home&&away?`<div class="sport-teams"><div class="sport-team"><div class="sport-team-n">${home}</div></div><div class="sport-vs">VS</div><div class="sport-team"><div class="sport-team-n">${away}</div></div></div>`:''}
     </div>
   </div>`;
 }
@@ -2459,9 +2330,11 @@ async function openSportItem(match){
     for(const src of match.sources.slice(0,3)){
       try{const streams=await fetchStreams(src.source,src.id);if(Array.isArray(streams))streams.forEach(s=>{if(s.embedUrl)srcList.push({n:`${src.source.toUpperCase()} ${s.hd!==false?'HD':'SD'}`,u:s.embedUrl});});}catch{}
     }
-    match.sources.forEach((src,i)=>{for(let sn=1;sn<=3;sn++)srcList.push({n:`STREAM ${i*3+sn}`,u:`${WS}/embed/${src.source}/${src.id}/${sn}`});});
-  }
-  if(!srcList.length)srcList.push({n:'WESTREAM LIVE',u:`${WS}/matches/live`});
+    match.sources.forEach((src,i)=>{
+  for(let sn=1;sn<=3;sn++)
+    srcList.push({n:`STREAM ${i*3+sn}`,u:`${SP}/embed/${src.source}/${src.id}/${sn}`});
+});
+if(!srcList.length)srcList.push({n:'WESTREAM LIVE',u:`${SP}/matches/live`});
   curSources=srcList;srcIdx=0;setSrcDropdown(curSources);
   document.getElementById('pFrame').src=srcList[0].u;
 }
