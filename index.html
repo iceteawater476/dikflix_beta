@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2452,20 +2451,41 @@ async function openSportItem(match){
   document.getElementById('dubRow').style.display='none';
   document.getElementById('pFrame').src='';
   const pills=document.getElementById('pPills');
-  pills.innerHTML=`<span class="pill pill-gr">🔴 LIVE</span>${match.category?`<span class="pill">${sportIcon(match.category)} ${match.category}</span>`:''}${fmtTime(match.date)?`<span class="pill">${fmtTime(match.date)}</span>`:''}`;
+  pills.innerHTML=`<span class="pill pill-gr">🔴 LIVE</span>${match.category?`<span class="pill">${sportIcon(match.category)} ${match.category.toUpperCase()}</span>`:''}${fmtTime(match.date)?`<span class="pill">${fmtTime(match.date)}</span>`:''}`;
   if(match.teams?.home?.name&&match.teams?.away?.name)
     pills.innerHTML+=`<span class="pill pill-r">${match.teams.home.name} VS ${match.teams.away.name}</span>`;
   const srcList=[];
   if(match.sources?.length){
-    for(const src of match.sources.slice(0,3)){
-      try{const streams=await fetchStreams(src.source,src.id);if(Array.isArray(streams))streams.forEach(s=>{if(s.embedUrl)srcList.push({n:`${src.source.toUpperCase()} ${s.hd!==false?'HD':'SD'}`,u:s.embedUrl});});}catch{}
+    // Fetch streams from all sources in parallel using streamed.pk API
+    const streamJobs=match.sources.map(async(src)=>{
+      try{
+        const streams=await fetchStreams(src.source,src.id);
+        if(!Array.isArray(streams))return;
+        streams.forEach((s,idx)=>{
+          const embedUrl=s.embedUrl||s.url||s.link||null;
+          if(embedUrl){
+            const qual=s.hd===true?'HD':s.hd===false?'SD':'LIVE';
+            srcList.push({n:`${src.source.toUpperCase()} · ${qual} ${idx+1}`,u:embedUrl});
+          }
+        });
+      }catch{}
+    });
+    await Promise.all(streamJobs);
+    // Fallback: build streamed.pk embed URLs directly from source+id
+    if(!srcList.length){
+      match.sources.forEach((src,i)=>{
+        for(let sn=1;sn<=3;sn++){
+          srcList.push({n:`${src.source.toUpperCase()} STREAM ${sn}`,u:`${SP}/embed/${src.source}/${src.id}/${sn}`});
+        }
+      });
     }
-    match.sources.forEach((src,i)=>{for(let sn=1;sn<=3;sn++)srcList.push({n:`STREAM ${i*3+sn}`,u:`${WS}/embed/${src.source}/${src.id}/${sn}`});});
   }
-  if(!srcList.length)srcList.push({n:'WESTREAM LIVE',u:`${WS}/matches/live`});
+  if(!srcList.length)srcList.push({n:'NO STREAM AVAILABLE',u:'about:blank'});
   curSources=srcList;srcIdx=0;setSrcDropdown(curSources);
-  document.getElementById('pFrame').src=srcList[0].u;
+  if(srcList[0].u!=='about:blank')document.getElementById('pFrame').src=srcList[0].u;
+  else{document.getElementById('pFrame').src='';document.getElementById('pTitle').textContent='NO STREAMS AVAILABLE — TRY ANOTHER MATCH';}
 }
+
 
 /* ─── CONTINUE WATCHING ── */
 const CW_KEY='dkfx_cw4';
@@ -2597,7 +2617,7 @@ async function _f1MatchSources(match){
         if(Array.isArray(streams))streams.forEach(s=>{if(s.embedUrl)srcList.push({n:`${src.source.toUpperCase()} ${s.hd!==false?'HD':'SD'}`,u:s.embedUrl});});
       }catch(e){}
     }
-    match.sources.forEach((src,i)=>{for(let sn=1;sn<=2;sn++)srcList.push({n:`STREAM ${i*2+sn}`,u:`${WS}/embed/${src.source}/${src.id}/${sn}`});});
+    match.sources.forEach((src,i)=>{for(let sn=1;sn<=2;sn++)srcList.push({n:`${src.source.toUpperCase()} STREAM ${i*2+sn}`,u:`${SP}/embed/${src.source}/${src.id}/${sn}`});});
   }
   return srcList;
 }
@@ -3227,31 +3247,6 @@ function closeLTVPlayer(){
   if(ltvHls){ltvHls.destroy();ltvHls=null;}
   if(video){video.pause();video.src='';}
   if(wrap)wrap.style.display='none';
-}
-<div class="player-shell" id="player-shell">
-  <video id="player-video" controls playsinline crossorigin="anonymous"
-         style="width:100%;height:100%;background:#000"></video>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
-<script>
-function loadStream(url) {
-  const video = document.getElementById('player-video');
-  video.pause(); video.src = '';
-  if (Hls.isSupported()) {
-    const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
-    hls.loadSource(url);
-    hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(()=>{}));
-    hls.on(Hls.Events.ERROR, (e, d) => {
-      if (d.fatal) console.error('HLS fatal:', d.type, d.details);
-    });
-    video._hls = hls;
-  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = url;
-    video.addEventListener('loadedmetadata', () => video.play().catch(()=>{}));
-  } else {
-    alert('HLS not supported in this browser');
-  }
 }
 </script>
 </body>
