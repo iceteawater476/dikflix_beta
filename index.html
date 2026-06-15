@@ -1227,98 +1227,175 @@ const LIVETV_CHANNELS=[
                           {"name":"Program Promo", "url":"https://owrcovcrpy.gpcdn.net/bpk-tv/1720/output/index.m3u8", "icon":"📺", "group":"Live"}
                         ];
 
-let ltvChannels = LIVETV_CHANNELS;
-let ltvHls = null;
-let ltvCurrentUrl = '';
-let ltvCurrentCh = null;
+let ltvState={};  // Only stores 'offline' if a stream fails to play
+let ltvCatFilter='all';
+let ltvSearchQ='';
+let ltvInited=false;
+let ltvHls=null;
+let ltvCurrentUrl='';
+let ltvCurrentCh=null;
 
-function initLiveTV() {
-  document.getElementById('ltv-total').textContent = ltvChannels.length;
-  document.getElementById('ltv-live').textContent = ltvChannels.length;
-  renderLTV(ltvChannels);
+function initLiveTV(){
+  if(ltvInited)return;
+  ltvInited=true;
+  updateLTVStats();
+  renderLTVGrid();
 }
 
-function renderLTV(list) {
-  const grid = document.getElementById('ltv-grid');
-  if (!list.length) { grid.innerHTML = '<div class="ltv-empty">NO CHANNELS FOUND</div>'; return; }
-  grid.innerHTML = list.map((c, i) => `<div class="ltv-card live" onclick="playLiveTV('${encodeURIComponent(JSON.stringify(c))}')">
-    <div class="ltv-status"><div class="ltv-status-dot live"></div></div>
-    <div class="ltv-card-icon">${c.icon || '📺'}</div>
-    <div class="ltv-card-name">${c.name}</div>
-    <div class="ltv-card-group">${c.group}</div>
-  </div>`).join('');
+function updateLTVStats(){
+  const total=LIVETV_CHANNELS.length;
+  const offlineCount=Object.values(ltvState).filter(s=>s==='offline').length;
+  document.getElementById('ltv-total').textContent=total;
+  document.getElementById('ltv-live').textContent=total - offlineCount;
+  
+  // Hide the "checking" stat since we removed aggressive background checking
+  const checkingStat = document.getElementById('ltv-checking');
+  if(checkingStat) checkingStat.parentElement.style.display = 'none';
 }
 
-function filterLTV() {
-  const q = document.getElementById('ltv-search').value.toLowerCase();
-  renderLTV(ltvChannels.filter(c => c.name.toLowerCase().includes(q)));
+function _updateLTVCard(url){
+  const card=document.querySelector(`.ltv-card[data-url="${CSS.escape(url)}"]`);
+  if(!card)return;
+  const s=ltvState[url]||'live';
+  card.className='ltv-card '+s;
+  const dot=card.querySelector('.ltv-status-dot');
+  const lbl=card.querySelector('.ltv-status-lbl');
+  if(dot)dot.className='ltv-status-dot '+s;
+  if(lbl)lbl.textContent=s==='live'?'LIVE':'OFFLINE';
+  if(s==='live')card.classList.add('live');
 }
 
-function filterLTVCat(cat, btn) {
-  document.querySelectorAll('.ltv-filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  if (cat === 'all' || cat === 'live') renderLTV(ltvChannels);
-  else renderLTV(ltvChannels.filter(c => c.group.toUpperCase().includes(cat.toUpperCase())));
+function renderLTVGrid(){
+  const el=document.getElementById('ltv-grid');
+  if(!el)return;
+  const q=ltvSearchQ.toLowerCase();
+  let chs=LIVETV_CHANNELS.filter(ch=>{
+    if(ltvCatFilter==='live')return ltvState[ch.url]!=='offline';
+    if(ltvCatFilter==='all')return true;
+    return (ch.group||'').toUpperCase() === ltvCatFilter.toUpperCase();
+  });
+  if(q)chs=chs.filter(ch=>ch.name.toLowerCase().includes(q));
+  if(!chs.length){el.innerHTML='<div class="ltv-empty">NO CHANNELS FOUND</div>';return;}
+  el.innerHTML=chs.map(ch=>{
+    const s=ltvState[ch.url]||'live';
+    return`<div class="ltv-card ${s}" data-url="${ch.url.replace(/"/g,'&quot;')}" onclick="ltvPlay(${JSON.stringify(ch).replace(/"/g,'&quot;')})">
+      <div class="ltv-status"><span class="ltv-status-dot ${s}"></span><span class="ltv-status-lbl">${s==='live'?'LIVE':'OFFLINE'}</span></div>
+      <div class="ltv-card-icon">${ch.icon || '📺'}</div>
+      <div class="ltv-card-name">${ch.name}</div>
+      <div class="ltv-card-group">${ch.group || ''}</div>
+    </div>`;
+  }).join('');
 }
 
-function playLiveTV(dataStr) {
-  const ch = JSON.parse(decodeURIComponent(dataStr));
-  ltvCurrentCh = ch; ltvCurrentUrl = ch.url;
-  document.getElementById('ltv-player-title').textContent = ch.name;
-  document.getElementById('ltv-player-group').textContent = ch.group;
-  document.getElementById('ltv-player-wrap').style.display = 'block';
-  const video = document.getElementById('ltv-video');
-  const err = document.getElementById('ltv-err-overlay');
-  const ov = document.getElementById('ltv-overlay');
-  err.style.display = 'none'; ov.classList.remove('hidden');
+function filterLTV(){
+  ltvSearchQ=document.getElementById('ltv-search')?.value||'';
+  renderLTVGrid();
+}
+function filterLTVCat(cat,el){
+  ltvCatFilter=cat;
+  document.querySelectorAll('.ltv-filter-btn').forEach(b=>b.classList.remove('active'));
+  if(el)el.classList.add('active');
+  renderLTVGrid();
+}
 
-  if (ltvHls) { ltvHls.destroy(); ltvHls = null; }
-  const onReady = () => { ov.classList.add('hidden'); };
+function ltvPlay(ch){
+  const wrap=document.getElementById('ltv-player-wrap');
+  const titleEl=document.getElementById('ltv-player-title');
+  const groupEl=document.getElementById('ltv-player-group');
+  const video=document.getElementById('ltv-video');
+  const overlay=document.getElementById('ltv-overlay');
+  const errOverlay=document.getElementById('ltv-err-overlay');
+  const errUrl=document.getElementById('ltv-err-url');
+  if(!wrap||!video)return;
 
-  if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-    ltvHls = new Hls({ maxMaxBufferLength: 30 });
-    ltvHls.on(Hls.Events.ERROR, (e, data) => {
-      if (data.fatal) {
-        ltvHls.destroy(); ov.classList.add('hidden');
-        err.style.display = 'flex'; document.getElementById('ltv-err-url').textContent = ch.url;
-      }
+  ltvCurrentUrl=ch.url;
+  ltvCurrentCh=ch;
+
+  wrap.style.display='';
+  if(titleEl)titleEl.textContent=ch.name;
+  if(groupEl)groupEl.textContent=ch.group||'';
+
+  if(overlay)overlay.classList.remove('hidden');
+  if(errOverlay)errOverlay.style.display='none';
+
+  if(!document.body.classList.contains('lights-off'))
+    wrap.scrollIntoView({behavior:'smooth',block:'start'});
+
+  if(ltvHls){ltvHls.destroy();ltvHls=null;}
+  video.src='';
+
+  const url=ch.url;
+  const onReady=()=>{
+    if(overlay)overlay.classList.add('hidden');
+    ltvState[url]='live';
+    _updateLTVCard(url);
+    updateLTVStats();
+  };
+  const onFatal=()=>{
+    if(overlay)overlay.classList.add('hidden');
+    if(errOverlay)errOverlay.style.display='flex';
+    if(errUrl)errUrl.textContent=url;
+    ltvState[url]='offline'; // Mark offline ONLY if it actually fails to play
+    _updateLTVCard(url);
+    updateLTVStats();
+    ltvHls?.destroy();ltvHls=null;
+  };
+
+  if(typeof Hls==='undefined'||!Hls.isSupported()){
+    video.src=url;
+    video.oncanplay=onReady;
+    video.onerror=onFatal;
+    video.play().catch(()=>{});
+  }else{
+    ltvHls=new Hls({
+      enableWorker:true,
+      lowLatencyMode:true,
+      maxBufferLength:30,
+      startLevel:-1,
     });
-    ltvHls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => { }); onReady(); });
-    ltvHls.loadSource(ch.url);
+    ltvHls.on(Hls.Events.ERROR,(ev,data)=>{if(data.fatal)onFatal();});
+    ltvHls.on(Hls.Events.MANIFEST_PARSED,()=>{
+      video.play().catch(()=>{});
+      onReady();
+    });
+    ltvHls.loadSource(url);
     ltvHls.attachMedia(video);
-  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = ch.url;
-    video.addEventListener('loadedmetadata', () => { video.play().catch(() => { }); onReady(); });
   }
-  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function closeLTVPlayer() {
-  const wrap = document.getElementById('ltv-player-wrap');
-  const video = document.getElementById('ltv-video');
-  if (ltvHls) { ltvHls.destroy(); ltvHls = null; }
-  if (video) { video.pause(); video.src = ''; }
-  if (wrap) wrap.style.display = 'none';
+function closeLTVPlayer(){
+  const wrap=document.getElementById('ltv-player-wrap');
+  const video=document.getElementById('ltv-video');
+  if(ltvHls){ltvHls.destroy();ltvHls=null;}
+  if(video){video.pause();video.src='';}
+  if(wrap)wrap.style.display='none';
   document.body.classList.remove('lights-off');
 }
 
-function toggleLTVLights() {
-  const on = document.body.classList.toggle('lights-off');
-  const btn = document.getElementById('ltv-lights-btn');
-  if (btn) { btn.textContent = on ? '💡' : '💡'; btn.title = on ? 'Lights On' : 'Lights Off'; }
-  document.body.style.overflow = on ? 'hidden' : '';
-  if (on) window.scrollTo(0, 0);
+function toggleLTVLights(){
+  const on=document.body.classList.toggle('lights-off');
+  const btn=document.getElementById('ltv-lights-btn');
+  if(btn){btn.textContent=on?'💡':'💡';btn.title=on?'Lights On':'Lights Off';}
+  document.body.style.overflow=on?'hidden':'';
+  if(on) window.scrollTo(0,0);
 }
 
-function ltvCopyUrl() {
-  if (!ltvCurrentUrl) return;
-  navigator.clipboard?.writeText(ltvCurrentUrl).then(() => {
+function ltvCopyUrl(){
+  if(!ltvCurrentUrl)return;
+  navigator.clipboard?.writeText(ltvCurrentUrl).then(()=>{
     toast('🔗 Stream URL copied — paste into VLC or MPV');
-  }).catch(() => {
-    prompt('Copy this URL for VLC:', ltvCurrentUrl);
+  }).catch(()=>{
+    prompt('Copy this URL for VLC/MPV:',ltvCurrentUrl);
   });
 }
 
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&document.body.classList.contains('lights-off')){
+    document.body.classList.remove('lights-off');
+    document.body.style.overflow='';
+  }
+});
+</script>
 /* ─── SEARCH ── */
 async function doSearch(q){
   q=q||document.getElementById('searchInput').value.trim();if(!q)return;
